@@ -1,0 +1,8 @@
+You are analyzing 200.txt, which is around 50000 lines to help me generate evaluation prompts for my LLM. 
+Each prompt I generate evaluates a single capability, which is denoted with "category".
+
+Category: "Disambiguates distinct entities with identical or near-identical names across context."
+
+Look at the source and give me relevant content on this so that I can create an eval prompt that will evaluate our LLM on the given category.
+
+Also, provide the golden responses to the prompts, too.

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "openrouter": {
+      "options": {
+        "apiKey": "${OPEN_ROUTER_API_KEY}"
+      }
+    }
+  },
+  "agent": {
+    "qa_generator": {
+      "model": "openrouter/deepseek/deepseek-v3.2",
+      "temperature": 0.8,
+      "mode": "all",
+      "steps": 25,
+      "description": "Generates evaluation Q&A pairs by grepping and reading the document corpus.",
+      "permission": {
+        "*": "allow",
+        "write": "deny",
+        "edit": "deny",
+        "bash": "deny",
+        "question": "deny",
+        "plan_enter": "deny"
+      },
+      "prompt": "You are an expert at generating LLM evaluation datasets from document corpora.\nYou have access to grep and read tools. Use them to find and read relevant passages.\nAlways output your final answer as a valid JSON array — no markdown fences, no preamble.\nBe thorough: read enough context to craft accurate golden answers."
+    },
+    "qa_proposer": {
+      "model": "openrouter/deepseek/deepseek-v3.2",
+      "temperature": 0.9,
+      "mode": "all",
+      "steps": 1,
+      "description": "Generates a question and initial partial answer from a seed document chunk.",
+      "permission": { "*": "deny" },
+      "prompt": "You are a Question Proposer for a multi-hop Q&A dataset.\nGiven a seed document chunk and a question category, generate a focused question suited to the category, extract a partial answer from the seed chunk, and signal whether the answer is complete.\nEnd every response with exactly one of: [COMPLETE] if the seed chunk alone fully answers the question, or [CONTINUE] if more chunks are needed.\nRespond only with the QUESTION and PARTIAL_ANSWER fields as instructed in the user message."
+    },
+    "hop_answerer": {
+      "model": "openrouter/deepseek/deepseek-v3.2",
+      "temperature": 0.7,
+      "mode": "all",
+      "steps": 1,
+      "description": "Extracts partial answer evidence from a retrieved chunk during a hop.",
+      "permission": { "*": "deny" },
+      "prompt": "You are a Hop Answerer for a multi-hop Q&A dataset.\nGiven a question and a retrieved document chunk, extract any information from the chunk that helps answer the question. Be concise and only include facts directly relevant to the question.\nEnd every response with exactly one of: [COMPLETE] if the question is now fully answered, or [CONTINUE] if more evidence is still needed.\nDo not add speculation or outside knowledge. Respond only with the PARTIAL_ANSWER field as instructed."
+    },
+    "contractor_validator": {
+      "model": "openrouter/deepseek/deepseek-v3.2",
+      "temperature": 0.3,
+      "mode": "all",
+      "steps": 1,
+      "description": "Validates and polishes a completed Q&A hop chain. Returns structured JSON.",
+      "permission": { "*": "deny" },
+      "prompt": "You are a Contractor Validator for a Q&A dataset quality gate.\nYou assess Q&A chains on category suitability and answer completeness, write a polished final answer, and approve or reject the chain.\nRespond ONLY with valid JSON matching the exact schema specified in the user message. No markdown fences, no extra text."
+    }
+  }
+}

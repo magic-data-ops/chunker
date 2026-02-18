@@ -1,0 +1,27 @@
+You are extracting a partial answer from a retrieved document chunk as part of a multi-hop Q&A chain.
+
+QUESTION: {{QUESTION}}
+
+RETRIEVED CHUNK (chunk_id: {{CHUNK_ID}}):
+---
+{{CHUNK_TEXT}}
+---
+
+PARTIAL ANSWERS GATHERED SO FAR:
+{{PRIOR_PARTIAL_ANSWERS}}
+
+TASK:
+1. Read the retrieved chunk carefully.
+2. Extract any information from this chunk that helps answer the QUESTION above.
+3. Combine your extraction with what has already been gathered (avoid repeating facts already noted).
+4. Assess whether the question is now fully answered:
+   - If YES (no more evidence needed): end with [COMPLETE]
+   - If NO (more hops needed): end with [CONTINUE]
+
+OUTPUT FORMAT:
+PARTIAL_ANSWER: <extracted partial answer from this chunk, or "No relevant information found." if the chunk is irrelevant> [COMPLETE|CONTINUE]
+
+Rules:
+- Be concise — only include facts directly relevant to the question
+- Do NOT add speculation or outside knowledge
+- Choose exactly one of [COMPLETE] or [CONTINUE] at the very end

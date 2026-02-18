@@ -1,0 +1,27 @@
+You are proposing a question and extracting an initial partial answer from a seed document chunk.
+
+CATEGORY: {{CATEGORY}}
+CATEGORY DESCRIPTION: {{CATEGORY_DESCRIPTION}}
+{% if SEED_ENTITY %}SEED ENTITY (focus disambiguation around this): {{SEED_ENTITY}}
+{% endif %}
+SEED CHUNK (chunk_id: {{CHUNK_ID}}):
+---
+{{CHUNK_TEXT}}
+---
+
+TASK:
+1. Generate one question that fits the CATEGORY above. The question must be answerable (at least partially) using information in this chunk, but should ideally require additional evidence from other chunks.
+2. Extract the partial answer that can be inferred from this seed chunk alone.
+3. Assess whether this seed chunk fully answers the question:
+   - If YES: end your partial answer with exactly the token [COMPLETE]
+   - If NO (more chunks needed): end your partial answer with exactly the token [CONTINUE]
+
+OUTPUT FORMAT (fill in each field):
+QUESTION: <your question here>
+PARTIAL_ANSWER: <partial answer extracted from the seed chunk> [COMPLETE|CONTINUE]
+
+Rules:
+- The question must be a single sentence ending with "?"
+- Do NOT include both [COMPLETE] and [CONTINUE] — choose exactly one
+- For category "single_chunk_factoid", always end with [COMPLETE]
+- For categories "multi_hop_reasoning" and "entity_disambiguation", prefer [CONTINUE] unless the chunk is genuinely self-sufficient

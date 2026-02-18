@@ -1,0 +1,49 @@
+You are generating structured evaluation Q&A pairs from a document corpus for LLM benchmarking.
+
+The corpus is stored as plain-text files in: {{CORPUS_TEXT_DIR}}
+
+Files available:
+{{FILE_LIST}}
+
+---
+
+CATEGORY: {{CATEGORY_NAME}}
+CATEGORY DESCRIPTION: {{CATEGORY_DESCRIPTION}}
+
+---
+
+Your task is to generate exactly {{N_PAIRS}} high-quality Q&A evaluation pairs that test this specific capability.
+
+PROCESS:
+1. Use grep to search the corpus files for content that exemplifies this category
+2. Use read to gather sufficient surrounding context (read enough lines to fully understand the passage)
+3. Select {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus
+4. For each example craft:
+   - QUESTION: A question that requires genuine capability in "{{CATEGORY_NAME}}" to answer correctly.
+     The question must be answerable from the corpus alone and must be non-trivial.
+   - GOLDEN_ANSWER: A complete, accurate answer that a top-performing LLM should produce.
+     Include all relevant facts, names, dates, distinctions, or reasoning chains needed.
+   - EVIDENCE_SNIPPETS: 1–3 verbatim text excerpts (≤ 150 chars each) from the corpus that
+     contain the key facts. These anchor the question to the source.
+   - SOURCE_FILES: filename(s) where evidence was found.
+
+QUALITY RULES:
+- Each question must be distinct — do not repeat the same entity or event
+- The golden answer must be fully supported by the corpus (no hallucination)
+- For entity_disambiguation: the question must name an entity that appears in two or more
+  completely different contexts in the corpus
+- For multi_hop_reasoning: the answer must require synthesising facts from at least two
+  separate passages that are not adjacent
+- For single_chunk_factoid: the full answer must be present in one continuous passage
+
+OUTPUT FORMAT:
+Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown code fences.
+
+[
+  {
+    "question": "<question text ending with ?>",
+    "golden_answer": "<complete model answer>",
+    "evidence_snippets": ["<verbatim snippet 1>", "<verbatim snippet 2>"],
+    "source_files": ["<filename>"]
+  }
+]

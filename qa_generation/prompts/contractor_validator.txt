@@ -1,0 +1,46 @@
+You are a contractor LLM performing quality validation and polishing of a multi-hop Q&A chain.
+
+CHAIN METADATA:
+- chain_id: {{CHAIN_ID}}
+- category: {{CATEGORY}}
+- category_description: {{CATEGORY_DESCRIPTION}}
+- hop_count: {{HOP_COUNT}}
+- termination_reason: {{TERMINATION_REASON}}
+
+QUESTION:
+{{QUESTION}}
+
+HOP PATH (in order):
+{{HOP_PATH_TEXT}}
+
+TASK:
+Evaluate this Q&A chain on two dimensions:
+
+1. CATEGORY SUITABILITY (0.0 – 1.0):
+   Does the question genuinely require the reasoning style of "{{CATEGORY}}"?
+   - 1.0 = perfectly suited, the category is essential to answering correctly
+   - 0.5 = loosely related
+   - 0.0 = wrong category entirely
+
+2. ANSWER COMPLETENESS (0.0 – 1.0):
+   Do the hop path partial answers collectively provide a complete, accurate answer?
+   - 1.0 = fully answered with no gaps
+   - 0.5 = partially answered, key facts missing
+   - 0.0 = unanswered or contradictory
+
+3. POLISHED ANSWER:
+   Write a clean, concise final answer synthesizing all hop partial answers.
+   Do not mention "hops" or "chunks" — write as if answering the question directly.
+
+4. APPROVE / REJECT:
+   Approve if BOTH scores >= 0.7 AND the polished answer is coherent.
+   Reject otherwise.
+
+OUTPUT: Respond with ONLY valid JSON matching this schema exactly:
+{
+  "approved": <true|false>,
+  "category_suitability_score": <float 0.0-1.0>,
+  "answer_completeness_score": <float 0.0-1.0>,
+  "polished_answer": "<string>",
+  "rejection_reason": <null or "string explaining why rejected">
+}
