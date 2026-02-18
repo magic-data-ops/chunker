@@ -12,7 +12,7 @@
       "model": "opencode/big-pickle",
       "temperature": 0.8,
       "mode": "all",
-      "steps": 25,
+      "steps": 50,
       "description": "Generates evaluation Q&A pairs by grepping and reading the document corpus.",
       "permission": {
         "*": "allow",
