@@ -1,8 +1,6 @@
 You are generating structured evaluation Q&A pairs from a document corpus for LLM benchmarking.
 
-The corpus is stored as plain-text files in: {{CORPUS_TEXT_DIR}}
-
-Files available:
+You are operating inside the corpus directory. The following files are available in your current directory:
 {{FILE_LIST}}
 
 ---

@@ -180,7 +180,6 @@ async def generate_for_category(
             batch = min(batch_size, remaining)
             prompt = _render(
                 gen_template,
-                CORPUS_TEXT_DIR=str(Path(corpus_text_dir).resolve()),
                 FILE_LIST=file_list,
                 CATEGORY_NAME=category["name"],
                 CATEGORY_DESCRIPTION=category["description"].strip(),

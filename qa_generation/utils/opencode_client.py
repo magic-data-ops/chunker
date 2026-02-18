@@ -37,11 +37,13 @@ class OpenCodeClient:
         self,
         base_url: Optional[str] = None,
         directory: Optional[str] = None,
-        timeout: float = 180.0,
+        timeout: float = 600.0,  # seconds — read timeout for agent completion
     ):
         self.base_url = (base_url or os.getenv("OPENCODE_SERVER_URL", "http://localhost:4096")).rstrip("/")
         self.directory = directory or os.getenv("OPENCODE_PROJECT_DIR", os.getcwd())
-        self.timeout = timeout
+        # Use a large read timeout — the agent may run 25 grep/read steps before responding.
+        # connect/write use a short timeout; only read is extended.
+        self.timeout = httpx.Timeout(connect=15.0, read=timeout, write=30.0, pool=15.0)
 
     # ------------------------------------------------------------------
     # Low-level primitives
