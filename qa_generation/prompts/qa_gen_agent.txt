@@ -1,12 +1,13 @@
-You are generating structured evaluation Q&A pairs from a document corpus for LLM benchmarking.
+You are analyzing a document corpus to help generate evaluation prompts for an LLM.
+Each evaluation prompt tests a single capability, denoted by its "category."
 
-You are operating inside the corpus directory. The following files are available in your current directory:
+You are operating inside the corpus directory. Available files:
 {{FILE_LIST}}
 
 ---
 
 CATEGORY: {{CATEGORY_NAME}}
-CATEGORY DESCRIPTION: {{CATEGORY_DESCRIPTION}}
+CAPABILITY BEING EVALUATED: {{CATEGORY_DESCRIPTION}}
 
 ---
 
@@ -15,82 +16,173 @@ SEED CONTEXT (starting point — use this to orient your search):
 
 ---
 
-Your task is to generate exactly {{N_PAIRS}} high-quality Q&A evaluation pairs that test this specific capability.
+Your task: look at the source material and find relevant content to create exactly
+{{N_PAIRS}} evaluation prompt(s) that test the "{{CATEGORY_NAME}}" capability.
+For each prompt, you must also provide the golden response (the ideal answer an LLM
+should produce).
 
 SEARCH STRATEGY:
+
 1. Start from the seed context above. Identify key multi-word phrases, names, or concepts.
 2. Use Glob to discover available .txt files if needed.
-3. Use Grep with multi-word phrases (2–4 words) to find relevant passages. Examples:
-   - Grep for "Supreme Court justices" — good (specific phrase)
-   - Grep for "justices" — bad (too generic, noisy results)
-4. Use Read to gather context around matches (read the file, focus on lines near hits).
-   You need full paragraph context — read enough lines to fully understand the passage.
-5. For multi_hop_reasoning: Grep for a concept from the seed, then Grep for a related
-   concept from what you found. Chain at least 2 separate passages from different parts
-   of the corpus.
-6. For entity_disambiguation: Grep for the entity name "{{SEED_ENTITY}}" and find passages
-   where it appears in clearly different contexts.
+3. Use Grep with specific multi-word phrases (2–4 words) to find relevant passages. Examples:
+   - Grep for "Attention Is All" — good (specific phrase)
+   - Grep for "attention" — bad (too generic, overwhelming results)
+   - Grep for "Spatial Transformer Networks" — good (specific title)
+   - Grep for "transformer" — bad (too broad)
+4. Use Read to gather full context around matches. Read enough surrounding lines
+   (typically 30–100 lines around a hit) to fully understand the passage.
+5. Category-specific guidance:
+   - For entity_disambiguation: Search for a name, acronym, or term that appears in
+     the corpus. Find at least two passages where the same name refers to clearly
+     different entities (different systems, people, methods, domains). The more distinct
+     the contexts, the better.
+   - For multi_hop_reasoning: Search for a concept from the seed, then search for a
+     related concept from what you found. Chain at least 2 separate passages from
+     different parts of the corpus.
+   - For single_chunk_factoid: Find a single passage containing a complete,
+     self-contained fact.
+
+PARALLEL SEARCH WITH SUBAGENTS — STRONGLY RECOMMENDED:
+You have access to the Task tool which spawns Explore subagents. These subagents run
+in parallel, each with their own context window, allowing you to search far more of
+the corpus than you could alone. USE THEM AGGRESSIVELY.
+
+When to spawn subagents (do this by default for most searches):
+- For entity_disambiguation: Spawn 2–4 Explore agents, each searching for the same
+  term in a different context or domain. This is the BEST way to find disambiguation
+  opportunities.
+- For multi_hop_reasoning: Spawn one agent per concept you need to chain together.
+  Each agent explores one topic deeply while you coordinate the results.
+- For single_chunk_factoid: Spawn agents to survey different sections of large files
+  in parallel, then pick the best self-contained fact.
+
+How to use the Task tool:
+- Set subagent_type to "Explore"
+- Give each agent a focused search mission in the prompt
+- Agents can use Grep, Read, and Glob independently
+- Launch multiple agents simultaneously for maximum parallelism
+
+Example — entity disambiguation:
+  Task(subagent_type="Explore", prompt="Search the corpus for uses of 'BERT' related
+  to NLP or language models. Use Grep for 'BERT' and Read surrounding context. Report
+  all passages found with file names and line numbers.")
+
+  Task(subagent_type="Explore", prompt="Search the corpus for uses of 'BERT' related
+  to robotics or physical systems. Use Grep for 'BERT' and Read surrounding context.
+  Report all passages found with file names and line numbers.")
+
+Example — multi-hop reasoning:
+  Task(subagent_type="Explore", prompt="Find all passages about attention mechanisms
+  in transformers. Report file, lines, and key facts.")
+
+  Task(subagent_type="Explore", prompt="Find all passages about computational
+  complexity of sequence models. Report file, lines, and key facts.")
+
+The subagents extend your effective context window — a single model can only read so
+much, but 3–4 parallel subagents can collectively survey the entire corpus. Always
+prefer spawning subagents over sequential Grep/Read when the corpus is large.
 
 EVIDENCE QUALITY — CRITICAL:
+
 Your evidence_snippets MUST be verbatim excerpts of COMPLETE SENTENCES from the corpus.
 
 GOOD evidence (full sentences, ≥50 characters):
-  "The Supreme Court ruled in Brown v. Board of Education (1954) that racial segregation in public schools was unconstitutional."
-  "Founded in 1927, the company initially manufactured agricultural equipment before pivoting to electronics in 1965."
+  "BERT stands for Bidirectional Encoder Representations from Transformers, a language representation model pre-trained on unlabeled text."
+  "The GPT cryptosystem, introduced by Gabidulin, Paramonov, and Trejtakov in 1991, is a public-key scheme based on rank codes."
 
 BAD evidence (single words, fragments — these will be REJECTED):
-  "justices."
-  "sit"
-  "1927"
-  "the company"
+  "BERT"
+  "transformer"
+  "1991"
+  "the system"
 
 Each evidence snippet must be:
-- A verbatim copy-paste from the corpus (no paraphrasing)
+- A verbatim copy-paste from the corpus (no paraphrasing whatsoever)
 - At least 50 characters long
 - A complete sentence or meaningful clause
 - Directly supporting the answer
 
 PROCESS:
-1. Use Grep to search the corpus files for content relevant to this category
-2. Use Read to gather sufficient surrounding context (read enough lines to fully understand the passage)
-3. Select {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus
-4. For each example craft:
-   - QUESTION: A question that requires genuine capability in "{{CATEGORY_NAME}}" to answer correctly.
-     The question must be answerable from the corpus alone and must be non-trivial.
-     Must end with a question mark.
-   - GOLDEN_ANSWER: A complete, accurate answer (at least 20 characters) that a top-performing
-     LLM should produce. Include all relevant facts, names, dates, distinctions, or reasoning
-     chains needed.
-   - EVIDENCE_SNIPPETS: Verbatim text excerpts (complete sentences, ≥50 chars each) from the
-     corpus that contain the key facts. These anchor the question to the source.
-     For single_chunk_factoid: exactly 1 snippet.
-     For multi_hop_reasoning: 2–4 snippets from different passages.
-     For entity_disambiguation: 1–3 snippets showing the entity in different contexts.
-   - SOURCE_FILES: filename(s) where evidence was found.
-   - EVIDENCE_LOCATIONS: file and line range for each evidence passage.
+
+Phase 1 — Explore the Source:
+1. Use Grep to search the corpus for content relevant to the "{{CATEGORY_NAME}}" capability.
+2. Use Read to gather sufficient surrounding context (read enough lines to fully
+   understand each passage — titles, authors, abstracts, key details).
+3. Identify {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus.
+
+Phase 2 — Construct Evaluation Prompts and Golden Responses:
+For each example, craft:
+
+- QUESTION (the evaluation prompt): A detailed question that requires genuine capability
+  in "{{CATEGORY_NAME}}" to answer correctly. The question must be answerable solely from
+  the corpus and must be non-trivial. Must end with a question mark.
+  For entity_disambiguation: ask the LLM to find and distinguish the different entities.
+  Be specific about what information to provide (e.g., paper IDs, titles, definitions,
+  domains, disambiguation logic).
+
+- GOLDEN_ANSWER (the ideal response): A comprehensive, structured answer that a
+  top-performing LLM should produce. This is the ground-truth answer against which LLM
+  responses will be scored — it must be thorough and precise. Include:
+  * Clearly labeled entities (Entity A, Entity B, etc.) with full supporting details
+  * Precise definitions using language from the source
+  * A disambiguation statement explaining how the entities differ
+  * All relevant facts, names, dates, and identifiers
+
+- DIFFICULTY: "easy", "medium", or "hard" based on how subtle the disambiguation is,
+  how many hops are needed, and how much domain knowledge is required.
+
+- ENTITIES: An array of the distinct entities found, each with:
+  * label: a short identifier (e.g., "BERT — NLP Model", "BERT — Robot")
+  * description: what this entity is, using source language
+  * evidence_snippet: verbatim excerpt (≥50 chars) supporting this entity
+  * evidence_location: file and line range where this entity's evidence was found
+
+- DISAMBIGUATION_STATEMENT: A clear explanation of how the entities differ and what
+  signals distinguish one usage from another.
+
+- SOURCE_FILES: filename(s) where evidence was found.
 
 QUALITY RULES:
-- Each question must be distinct — do not repeat the same entity or event
-- The golden answer must be fully supported by the corpus (no hallucination)
-- For entity_disambiguation: the question must name an entity that appears in two or more
-  completely different contexts in the corpus
+- Each question must be distinct — do not repeat the same entity, term, or concept.
+- The golden answer must be fully supported by the corpus (no hallucination).
+  Every claim must trace back to a verbatim evidence snippet.
+- For entity_disambiguation: the question MUST name a term that appears in two or more
+  clearly different contexts in the corpus. The question should require the respondent
+  to distinguish between these different entities or usages.
 - For multi_hop_reasoning: the answer MUST combine facts from at least 2 different
   evidence snippets. If either snippet were removed, the answer should become incomplete
   or ambiguous. Single-source answers will be REJECTED.
-- For single_chunk_factoid: the full answer must be present in one continuous passage,
-  and you must provide exactly 1 evidence snippet
+- For single_chunk_factoid: the full answer must be present in one continuous passage.
 
 OUTPUT FORMAT:
 Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown code fences.
 
 [
   {
-    "question": "<question text ending with ?>",
-    "golden_answer": "<complete model answer, at least 20 characters>",
-    "evidence_snippets": ["<verbatim sentence from corpus, ≥50 chars>", "<another sentence if multi-hop>"],
+    "question": "<detailed evaluation prompt ending with ?>",
+    "golden_answer": "<comprehensive ideal response with labeled entities, definitions, and disambiguation>",
+    "difficulty": "<easy|medium|hard>",
+    "entities": [
+      {
+        "label": "<short entity identifier, e.g. BERT — NLP Model>",
+        "description": "<what this entity is, from the source>",
+        "evidence_snippet": "<verbatim sentence from corpus, ≥50 chars>",
+        "evidence_location": {"file": "<filename>", "start_line": 100, "end_line": 150}
+      },
+      {
+        "label": "<short entity identifier, e.g. BERT — Robot>",
+        "description": "<what this entity is, from the source>",
+        "evidence_snippet": "<verbatim sentence from corpus, ≥50 chars>",
+        "evidence_location": {"file": "<filename>", "start_line": 2000, "end_line": 2050}
+      }
+    ],
+    "disambiguation_statement": "<how the entities differ and what signals distinguish them>",
     "source_files": ["<filename>"],
+    "evidence_snippets": ["<verbatim sentence ≥50 chars>", "<another verbatim sentence>"],
     "evidence_locations": [
-      {"file": "<filename>", "start_line": 120, "end_line": 160}
+      {"file": "<filename>", "start_line": 100, "end_line": 150},
+      {"file": "<filename>", "start_line": 2000, "end_line": 2050}
     ]
   }
 ]
