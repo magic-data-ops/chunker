@@ -80,6 +80,8 @@ class ClaudeRunResult:
     reply_text: str = ""                  # Final text response (Q/A JSON string)
     reply_json: Optional[list] = None     # Parsed JSON array if possible, else None
     tool_events: list = field(default_factory=list)   # [{tool, input, result, tool_use_id}]
+    reasoning_blocks: list = field(default_factory=list)  # Intermediate assistant text blocks
+    subagent_events: list = field(default_factory=list)  # Task tool invocations (subagents)
     raw_stdout: str = ""                  # Raw CLI output for debugging
     meta: dict = field(default_factory=dict)  # {model, max_budget, duration_ms, exit_code, cost_usd, ...}
     errors: list = field(default_factory=list)  # Any errors encountered during parsing
@@ -146,10 +148,10 @@ def _coerce_str(value) -> str:
     return str(value)
 
 
-def _parse_stream_json(stdout: str) -> Tuple[str, Optional[list], list, dict]:
+def _parse_stream_json(stdout: str) -> Tuple[str, Optional[list], list, dict, list]:
     """Parse Claude Code stream-json output.
 
-    Returns (reply_text, reply_json, tool_events, meta).
+    Returns (reply_text, reply_json, tool_events, meta, reasoning_blocks).
     """
     text_parts: list[str] = []
     tool_events: list[dict] = []
@@ -224,7 +226,7 @@ def _parse_stream_json(stdout: str) -> Tuple[str, Optional[list], list, dict]:
     # Try to parse reply as JSON array
     reply_json = _extract_json_array(reply_text)
 
-    return reply_text, reply_json, tool_events, meta
+    return reply_text, reply_json, tool_events, meta, text_parts
 
 
 async def _run_claude_code(
@@ -232,8 +234,8 @@ async def _run_claude_code(
     corpus_dir: str,
     claude_bin: str = "claude",
     model: str = "sonnet",
-    max_budget_usd: float = 0.50,
-    timeout: float = 600.0,
+    max_budget_usd: float = 1.00,
+    timeout: float = 900.0,
     system_prompt: Optional[str] = None,
     save_raw_path: Optional[str] = None,
 ) -> ClaudeRunResult:
@@ -245,7 +247,7 @@ async def _run_claude_code(
         "--dangerously-skip-permissions",
         "--model", model,
         "--max-budget-usd", str(max_budget_usd),
-        "--allowedTools", "Read", "Grep", "Glob", "Bash(ls:*)", "Bash(wc:*)",
+        "--allowedTools", "Read", "Grep", "Glob", "Bash(ls:*)", "Bash(wc:*)", "Task",
     ]
     if system_prompt:
         cmd += ["--system-prompt", system_prompt]
@@ -292,10 +294,12 @@ async def _run_claude_code(
             result.errors.append(f"stderr: {stderr_text[:500]}")
 
     # Parse the stream-json output
-    reply_text, reply_json, tool_events, meta = _parse_stream_json(raw_stdout)
+    reply_text, reply_json, tool_events, meta, reasoning_blocks = _parse_stream_json(raw_stdout)
     result.reply_text = reply_text
     result.reply_json = reply_json
     result.tool_events = tool_events
+    result.reasoning_blocks = reasoning_blocks
+    result.subagent_events = [e for e in tool_events if e.get("tool") == "Task"]
     result.meta.update(meta)
     result.meta["model"] = model
     result.meta["max_budget_usd"] = max_budget_usd
@@ -383,7 +387,7 @@ def _extract_provenance(tool_events: list) -> ProvenanceReport:
                 seen_files.add(os.path.basename(fp))
             prov.line_range = _parse_read_line_range(result)
             # Also try structured metadata
-            file_meta = result_meta.get("file", {})
+            file_meta = result_meta.get("file", {}) if isinstance(result_meta, dict) else {}
             if file_meta and not prov.line_range:
                 start = file_meta.get("startLine")
                 num = file_meta.get("numLines")
@@ -533,6 +537,16 @@ def _validate_pair(pair: dict, category: dict,
     a = pair.get("golden_answer", "").strip()
     evidence = pair.get("evidence_snippets", [])
 
+    # Fall back to entity-level evidence if top-level is empty
+    if not evidence:
+        entities = pair.get("entities", [])
+        for ent in entities:
+            snip = ent.get("evidence_snippet", "")
+            if isinstance(snip, str) and snip.strip():
+                evidence.append(snip)
+        if evidence:
+            pair["evidence_snippets"] = evidence
+
     if not q.endswith("?"):
         return False, "question does not end with '?'"
 
@@ -635,6 +649,11 @@ def _pairs_to_chains(pairs: List[dict], category: dict, prompt_seed_file: str,
         if evidence_locations:
             chain["evidence_locations"] = evidence_locations
 
+        # Preserve rich schema fields (entity disambiguation, etc.)
+        for key in ("difficulty", "entities", "disambiguation_statement"):
+            if key in pair:
+                chain[key] = pair[key]
+
         # Attach provenance report if available
         if provenance:
             chain["provenance_report"] = {
@@ -662,6 +681,82 @@ def _atomic_save(data: list, path: str) -> None:
     if os.path.exists(path):
         os.remove(path)
     os.rename(tmp, path)
+
+
+# ---------------------------------------------------------------------------
+# Run logging
+# ---------------------------------------------------------------------------
+
+
+def _save_run_log(
+    result: ClaudeRunResult,
+    provenance: Optional[ProvenanceReport],
+    category_name: str,
+    run_id: str,
+    prompt_seed_file: str,
+    pairs_generated: int,
+    pairs_valid: int,
+    log_dir: str,
+) -> None:
+    """Save a structured JSON log for a single claude -p run."""
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Build tool call summaries
+    tool_calls = []
+    for event in result.tool_events:
+        result_text = _coerce_str(event.get("result", ""))
+        entry = {
+            "tool": event.get("tool", ""),
+            "input": event.get("input", {}),
+            "result_preview": result_text[:500],
+            "result_length": len(result_text),
+        }
+        # Add parsed line range for Read calls
+        if event.get("tool") == "Read" and result_text:
+            lr = _parse_read_line_range(result_text)
+            if lr:
+                entry["line_range"] = list(lr)
+        tool_calls.append(entry)
+
+    # Build provenance summary
+    prov_summary = None
+    if provenance:
+        prov_summary = {
+            "unique_files": provenance.unique_files,
+            "grep_queries": provenance.grep_queries,
+            "total_content_read_chars": provenance.total_content_read_chars,
+        }
+
+    # Extract subagent calls
+    subagent_calls = []
+    for event in result.subagent_events:
+        inp = event.get("input", {})
+        subagent_calls.append({
+            "subagent_type": inp.get("subagent_type", ""),
+            "description": inp.get("description", ""),
+            "result_preview": _coerce_str(event.get("result", ""))[:500],
+        })
+
+    log_entry = {
+        "run_id": run_id,
+        "category": category_name,
+        "timestamp": result.meta.get("timestamp", ""),
+        "model": result.meta.get("model", ""),
+        "cost_usd": result.meta.get("cost_usd"),
+        "duration_ms": result.meta.get("duration_ms"),
+        "prompt_seed_file": prompt_seed_file,
+        "reasoning": result.reasoning_blocks,
+        "tool_calls": tool_calls,
+        "subagent_calls": subagent_calls,
+        "provenance_summary": prov_summary,
+        "pairs_generated": pairs_generated,
+        "pairs_valid": pairs_valid,
+        "errors": result.errors,
+    }
+
+    log_path = os.path.join(log_dir, f"{category_name}_{run_id}.json")
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(log_entry, f, indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +792,7 @@ async def generate_for_category(
     rng: Optional[random.Random] = None,
     save_raw_runs: bool = False,
     output_dir: str = ".",
+    log_dir: Optional[str] = None,
 ) -> List[dict]:
     """Generate n_chains Q&A pairs for one category via `claude -p`."""
     txt_files = sorted(Path(corpus_text_dir).glob("*.txt"))
@@ -808,6 +904,19 @@ async def generate_for_category(
             remaining -= batch
             consecutive_zero_progress += 1
 
+        # Save structured run log
+        if log_dir:
+            _save_run_log(
+                result=result,
+                provenance=provenance,
+                category_name=category["name"],
+                run_id=run_id,
+                prompt_seed_file=prompt_seed_file,
+                pairs_generated=len(pairs) if pairs else 0,
+                pairs_valid=len(valid_pairs),
+                log_dir=log_dir,
+            )
+
     return chains[:n_chains]
 
 
@@ -832,7 +941,7 @@ async def main() -> None:
     parser.add_argument("--model", default="sonnet",
                         choices=["sonnet", "opus", "haiku"],
                         help="Claude model to use (default: sonnet)")
-    parser.add_argument("--max-budget-usd", type=float, default=0.50,
+    parser.add_argument("--max-budget-usd", type=float, default=1.00,
                         help="Cost cap per Claude Code invocation in USD")
     parser.add_argument("--categories_cfg", default=None)
     parser.add_argument("--max_retries", type=int, default=2,
@@ -845,6 +954,8 @@ async def main() -> None:
                         help="Random seed for reproducibility")
     parser.add_argument("--save-raw-runs", action="store_true",
                         help="Save per-run raw JSONL output for debugging")
+    parser.add_argument("--log-dir", default="logs",
+                        help="Directory for structured run logs (default: logs)")
     parser.add_argument("--rank", type=int, default=0)
     parser.add_argument("--world_size", type=int, default=1)
     args = parser.parse_args()
@@ -922,6 +1033,7 @@ async def main() -> None:
                 rng=rng,
                 save_raw_runs=args.save_raw_runs,
                 output_dir=output_dir,
+                log_dir=args.log_dir,
             )
             return chains
 
