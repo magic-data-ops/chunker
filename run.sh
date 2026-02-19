@@ -219,9 +219,10 @@ main() {
   local docs_dir="./docs"
   local output_dir="./corpus_index"
   local corpus_dir="./corpus_text"
-  local raw_output="qa_chains_raw.json"
-  local validated_output="qa_chains_validated.json"
-  local report_output="validation_report.json"
+  local outputs_dir="./outputs"
+  local raw_output="$outputs_dir/qa_chains_raw.json"
+  local validated_output="$outputs_dir/qa_chains_validated.json"
+  local report_output="$outputs_dir/validation_report.json"
 
   # Build corpus — need docs directory
   if [ "$mode" = "1" ]; then
@@ -287,7 +288,7 @@ main() {
   local budget="2.00"
   local batch_size=5
   local concurrency=3
-  local log_dir="./logs"
+  local log_dir="$outputs_dir/logs"
   local save_raw="n"
 
   if [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "3" ]; then
@@ -380,6 +381,8 @@ main() {
 
   printf "\n"
   print_header "Running Pipeline"
+
+  mkdir -p "$outputs_dir" "$log_dir"
 
   local failed=false
 

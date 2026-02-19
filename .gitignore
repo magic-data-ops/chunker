@@ -35,6 +35,7 @@ corpus_index/
 corpus_text/
 
 # Pipeline artifacts — generated output
+outputs/
 qa_chains_raw*.json
 qa_chains_validated*.json
 validation_report*.json
