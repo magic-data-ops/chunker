@@ -41,5 +41,6 @@ validation_report*.json
 *.tmp
 
 # Logs
+logs/
 *.log
 qa_generation.log
