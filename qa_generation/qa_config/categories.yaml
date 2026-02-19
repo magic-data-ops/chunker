@@ -4,17 +4,17 @@ categories:
       Questions requiring the reader to distinguish two entities sharing the same
       name across different contexts, domains, or time periods.
     min_hops: 1
-    max_hops: 3
+    max_hops: 10
 
   - name: multi_hop_reasoning
     description: >
       Questions whose complete answer requires synthesizing facts from two or more
       non-adjacent chunks. No single chunk is sufficient.
     min_hops: 2
-    max_hops: 4
+    max_hops: 10
 
   - name: single_chunk_factoid
     description: >
       Simple factual retrieval. Answer is fully contained in one chunk. Control category.
     min_hops: 1
-    max_hops: 1
+    max_hops: 5
