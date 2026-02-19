@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Launch the Q&A generation pipeline.
 
-Each step runs `opencode run` directly (no server needed). OpenCode's built-in
-grep/read tools operate on the corpus text directory as if it were a project.
+Each step runs `claude -p` directly (no server needed). Claude Code's native
+Grep/Read/Glob tools operate on the corpus text directory.
 
 Usage:
     python launch_qa_gen.py --step 2 --corpus_text_dir ./corpus_text --n_chains 15
@@ -43,7 +43,7 @@ def _run_step(
     python = sys.executable
 
     if step == "2":
-        script = SCRIPT_DIR / "2_generate_qa_chains.py"
+        script = SCRIPT_DIR / "generate_qa_chains.py"
         cmd = [
             python, str(script),
             "--corpus_text_dir", args.corpus_text_dir,
@@ -51,14 +51,17 @@ def _run_step(
             "--n_chains", str(args.n_chains),
             "--batch_size", str(args.batch_size),
             "--concurrency", str(args.concurrency),
+            "--claude-bin", args.claude_bin,
+            "--model", args.model,
+            "--max-budget-usd", str(args.max_budget_usd),
         ]
-        if args.opencode:
-            cmd += ["--opencode", args.opencode]
+        if args.save_raw_runs:
+            cmd += ["--save-raw-runs"]
         if args.world_size > 1:
             return _run_multi_rank_step2(python, script, args, raw_output)
 
     elif step == "3":
-        script = SCRIPT_DIR / "3_contractor_polish.py"
+        script = SCRIPT_DIR / "contractor_polish.py"
         cmd = [
             python, str(script),
             "--input", raw_output,
@@ -67,7 +70,7 @@ def _run_step(
         ]
 
     elif step == "4":
-        script = SCRIPT_DIR / "4_validate_qa_dataset.py"
+        script = SCRIPT_DIR / "validate_qa_dataset.py"
         cmd = [
             python, str(script),
             "--input", validated_output,
@@ -98,11 +101,14 @@ def _run_multi_rank_step2(
             "--n_chains", str(args.n_chains),
             "--batch_size", str(args.batch_size),
             "--concurrency", str(args.concurrency),
+            "--claude-bin", args.claude_bin,
+            "--model", args.model,
+            "--max-budget-usd", str(args.max_budget_usd),
             "--rank", str(rank),
             "--world_size", str(args.world_size),
         ]
-        if args.opencode:
-            cmd += ["--opencode", args.opencode]
+        if args.save_raw_runs:
+            cmd += ["--save-raw-runs"]
         p = subprocess.Popen(cmd, cwd=str(PROJECT_DIR))
         procs.append(p)
         print(f"  Spawned rank {rank} (PID {p.pid})")
@@ -130,7 +136,7 @@ def _run_multi_rank_step2(
     if os.path.exists(raw_output):
         os.remove(raw_output)
     os.rename(tmp, raw_output)
-    print(f"  Merged {len(all_chains)} chains → {raw_output}")
+    print(f"  Merged {len(all_chains)} chains -> {raw_output}")
     return 0
 
 
@@ -144,13 +150,20 @@ def main() -> None:
     parser.add_argument("--step", choices=["2", "3", "4", "all"], default="2",
                         help="Pipeline step(s) to run")
     parser.add_argument("--corpus_text_dir", default="corpus_text",
-                        help="Directory of .txt files for OpenCode to grep/read")
-    parser.add_argument("--opencode", default=None,
-                        help="Path to opencode binary (auto-detected if omitted)")
+                        help="Directory of .txt files for Claude Code to Grep/Read")
+    parser.add_argument("--claude-bin", default="claude",
+                        help="Path to claude binary (default: 'claude')")
+    parser.add_argument("--model", default="sonnet",
+                        choices=["sonnet", "opus", "haiku"],
+                        help="Claude model to use (default: sonnet)")
+    parser.add_argument("--max-budget-usd", type=float, default=0.50,
+                        help="Cost cap per Claude Code invocation in USD")
     parser.add_argument("--n_chains", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=5)
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--world_size", type=int, default=1)
+    parser.add_argument("--save-raw-runs", action="store_true",
+                        help="Save per-run raw JSONL output for debugging")
     parser.add_argument("--raw_output", default="qa_chains_raw.json")
     parser.add_argument("--validated_output", default="qa_chains_validated.json")
     parser.add_argument("--report_output", default="validation_report.json")

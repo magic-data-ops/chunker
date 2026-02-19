@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chunker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "httpx",
+    "pyyaml",
+    "python-dotenv",
+    "pymupdf",
+    "tqdm",
+]
+
+[tool.setuptools.packages.find]
+include = ["qa_generation*", "tests*"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]

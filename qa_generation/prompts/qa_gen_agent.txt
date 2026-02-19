@@ -10,29 +10,75 @@ CATEGORY DESCRIPTION: {{CATEGORY_DESCRIPTION}}
 
 ---
 
+SEED CONTEXT (starting point — use this to orient your search):
+{{SEED_CONTEXT}}
+
+---
+
 Your task is to generate exactly {{N_PAIRS}} high-quality Q&A evaluation pairs that test this specific capability.
 
+SEARCH STRATEGY:
+1. Start from the seed context above. Identify key multi-word phrases, names, or concepts.
+2. Use Glob to discover available .txt files if needed.
+3. Use Grep with multi-word phrases (2–4 words) to find relevant passages. Examples:
+   - Grep for "Supreme Court justices" — good (specific phrase)
+   - Grep for "justices" — bad (too generic, noisy results)
+4. Use Read to gather context around matches (read the file, focus on lines near hits).
+   You need full paragraph context — read enough lines to fully understand the passage.
+5. For multi_hop_reasoning: Grep for a concept from the seed, then Grep for a related
+   concept from what you found. Chain at least 2 separate passages from different parts
+   of the corpus.
+6. For entity_disambiguation: Grep for the entity name "{{SEED_ENTITY}}" and find passages
+   where it appears in clearly different contexts.
+
+EVIDENCE QUALITY — CRITICAL:
+Your evidence_snippets MUST be verbatim excerpts of COMPLETE SENTENCES from the corpus.
+
+GOOD evidence (full sentences, ≥50 characters):
+  "The Supreme Court ruled in Brown v. Board of Education (1954) that racial segregation in public schools was unconstitutional."
+  "Founded in 1927, the company initially manufactured agricultural equipment before pivoting to electronics in 1965."
+
+BAD evidence (single words, fragments — these will be REJECTED):
+  "justices."
+  "sit"
+  "1927"
+  "the company"
+
+Each evidence snippet must be:
+- A verbatim copy-paste from the corpus (no paraphrasing)
+- At least 50 characters long
+- A complete sentence or meaningful clause
+- Directly supporting the answer
+
 PROCESS:
-1. Use grep to search the corpus files for content that exemplifies this category
-2. Use read to gather sufficient surrounding context (read enough lines to fully understand the passage)
+1. Use Grep to search the corpus files for content relevant to this category
+2. Use Read to gather sufficient surrounding context (read enough lines to fully understand the passage)
 3. Select {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus
 4. For each example craft:
    - QUESTION: A question that requires genuine capability in "{{CATEGORY_NAME}}" to answer correctly.
      The question must be answerable from the corpus alone and must be non-trivial.
-   - GOLDEN_ANSWER: A complete, accurate answer that a top-performing LLM should produce.
-     Include all relevant facts, names, dates, distinctions, or reasoning chains needed.
-   - EVIDENCE_SNIPPETS: 1–3 verbatim text excerpts (≤ 150 chars each) from the corpus that
-     contain the key facts. These anchor the question to the source.
+     Must end with a question mark.
+   - GOLDEN_ANSWER: A complete, accurate answer (at least 20 characters) that a top-performing
+     LLM should produce. Include all relevant facts, names, dates, distinctions, or reasoning
+     chains needed.
+   - EVIDENCE_SNIPPETS: Verbatim text excerpts (complete sentences, ≥50 chars each) from the
+     corpus that contain the key facts. These anchor the question to the source.
+     For single_chunk_factoid: exactly 1 snippet.
+     For multi_hop_reasoning: 2–4 snippets from different passages.
+     For entity_disambiguation: 1–3 snippets showing the entity in different contexts.
    - SOURCE_FILES: filename(s) where evidence was found.
+   - EVIDENCE_LOCATIONS: file and line range for each evidence passage.
 
 QUALITY RULES:
 - Each question must be distinct — do not repeat the same entity or event
 - The golden answer must be fully supported by the corpus (no hallucination)
 - For entity_disambiguation: the question must name an entity that appears in two or more
   completely different contexts in the corpus
-- For multi_hop_reasoning: the answer must require synthesising facts from at least two
-  separate passages that are not adjacent
-- For single_chunk_factoid: the full answer must be present in one continuous passage
+- For multi_hop_reasoning: the answer MUST combine facts from at least 2 different
+  evidence snippets. If either snippet were removed, the answer should become incomplete
+  or ambiguous. Single-source answers will be REJECTED.
+- For single_chunk_factoid: the full answer must be present in one continuous passage,
+  and you must provide exactly 1 evidence snippet
 
 OUTPUT FORMAT:
 Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown code fences.
@@ -40,8 +86,11 @@ Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown c
 [
   {
     "question": "<question text ending with ?>",
-    "golden_answer": "<complete model answer>",
-    "evidence_snippets": ["<verbatim snippet 1>", "<verbatim snippet 2>"],
-    "source_files": ["<filename>"]
+    "golden_answer": "<complete model answer, at least 20 characters>",
+    "evidence_snippets": ["<verbatim sentence from corpus, ≥50 chars>", "<another sentence if multi-hop>"],
+    "source_files": ["<filename>"],
+    "evidence_locations": [
+      {"file": "<filename>", "start_line": 120, "end_line": 160}
+    ]
   }
 ]

@@ -2,10 +2,10 @@
 """Aggregate validation metrics from qa_chains_validated.json and write a report.
 
 Usage:
-    python 4_validate_qa_dataset.py --input qa_chains_validated.json
-    python 4_validate_qa_dataset.py --input qa_chains_validated.json --output validation_report.json
+    python validate_qa_dataset.py --input qa_chains_validated.json
+    python validate_qa_dataset.py --input qa_chains_validated.json --output validation_report.json
 
-All scores come from contractor output in step 3 — this script only aggregates.
+All scores come from contractor output in contractor_polish.py — this script only aggregates.
 """
 
 from __future__ import annotations
@@ -122,6 +122,9 @@ def build_report(chains: List[dict]) -> dict:
 
 
 def print_report(report: dict) -> None:
+    if "error" in report:
+        print(f"\n{report['error']}\n")
+        return
     print("\n" + "=" * 60)
     print("Q&A DATASET VALIDATION REPORT")
     print("=" * 60)
@@ -169,12 +172,12 @@ def print_report(report: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Aggregate Q&A validation metrics")
     parser.add_argument("--input", default="qa_chains_validated.json",
-                        help="Output of 3_contractor_polish.py")
+                        help="Output of contractor_polish.py")
     parser.add_argument("--output", default="validation_report.json")
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
-        print(f"Error: '{args.input}' not found. Run 3_contractor_polish.py first.")
+        print(f"Error: '{args.input}' not found. Run contractor_polish.py first.")
         sys.exit(1)
 
     with open(args.input, "r", encoding="utf-8") as f:

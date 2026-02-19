@@ -2,7 +2,7 @@
 """Contractor LLM: validate and polish each Q&A chain.
 
 Usage:
-    python 3_contractor_polish.py --input qa_chains_raw.json --output qa_chains_validated.json
+    python contractor_polish.py --input qa_chains_raw.json --output qa_chains_validated.json
 
 Mirrors the async + resume + atomic-save pattern from evaluation/6_generate_rubrics.py.
 """
@@ -38,8 +38,8 @@ CONCURRENCY_LIMIT = 32
 SAVE_INTERVAL = 50
 
 
-def _load_categories() -> dict:
-    with open(CATEGORIES_CFG, "r") as f:
+def _load_categories(cfg_path: str = CATEGORIES_CFG) -> dict:
+    with open(cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
     return {c["name"]: c["description"] for c in cfg["categories"]}
 
@@ -184,7 +184,7 @@ async def main() -> None:
 
     cat_cfg_path = args.categories_cfg or CATEGORIES_CFG
     if os.path.exists(cat_cfg_path):
-        category_descriptions = _load_categories()
+        category_descriptions = _load_categories(cat_cfg_path)
     else:
         category_descriptions = {}
 

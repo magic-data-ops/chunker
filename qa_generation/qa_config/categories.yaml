@@ -3,7 +3,6 @@ categories:
     description: >
       Questions requiring the reader to distinguish two entities sharing the same
       name across different contexts, domains, or time periods.
-    seeding_strategy: entity_collision
     min_hops: 1
     max_hops: 3
 
@@ -11,17 +10,11 @@ categories:
     description: >
       Questions whose complete answer requires synthesizing facts from two or more
       non-adjacent chunks. No single chunk is sufficient.
-    seeding_strategy: random
     min_hops: 2
     max_hops: 4
 
   - name: single_chunk_factoid
     description: >
       Simple factual retrieval. Answer is fully contained in one chunk. Control category.
-    seeding_strategy: random
     min_hops: 1
     max_hops: 1
-
-seeding_strategies:
-  random: seeding.random_seeder.RandomSeeder
-  entity_collision: seeding.entity_collision_seeder.EntityCollisionSeeder
