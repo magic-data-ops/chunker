@@ -107,6 +107,24 @@ class TestValidatePair:
         ok, reason = gen._validate_pair(pair, multi_hop_category)
         assert not ok
 
+    def test_entity_evidence_fallback(self):
+        """When evidence_snippets is empty, fall back to entities[].evidence_snippet."""
+        entity_cat = {"name": "entity_disambiguation", "description": "test", "min_hops": 1, "max_hops": 3}
+        pair = {
+            "question": "What are the two meanings of BERT?",
+            "golden_answer": "BERT refers to both a robot and a language model.",
+            "evidence_snippets": [],
+            "entities": [
+                {"label": "BERT — Robot", "evidence_snippet": "BERT2 is a physical humanoid robot assistant used in an HRI experiment."},
+                {"label": "BERT — NLP", "evidence_snippet": "BERT stands for Bidirectional Encoder Representations from Transformers."},
+            ],
+            "source_files": ["corpus.txt"],
+        }
+        ok, reason = gen._validate_pair(pair, entity_cat)
+        assert ok
+        # evidence_snippets should now be populated from entities
+        assert len(pair["evidence_snippets"]) == 2
+
 
 # ---------------------------------------------------------------------------
 # _pairs_to_chains
@@ -208,7 +226,7 @@ class TestParseStreamJson:
             return f.read()
 
     def test_extracts_tool_events(self, golden_stdout):
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(golden_stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(golden_stdout)
         # Should have 3 tool events: Grep, Read, Glob
         assert len(tool_events) == 3
         tools_used = [e["tool"] for e in tool_events]
@@ -217,17 +235,17 @@ class TestParseStreamJson:
         assert "Glob" in tools_used
 
     def test_extracts_reply_text(self, golden_stdout):
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(golden_stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(golden_stdout)
         assert "Brown v. Board of Education" in reply_text
 
     def test_extracts_reply_json(self, golden_stdout):
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(golden_stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(golden_stdout)
         assert reply_json is not None
         assert len(reply_json) == 1
         assert reply_json[0]["question"] == "What was the ruling in Brown v. Board of Education?"
 
     def test_extracts_meta(self, golden_stdout):
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(golden_stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(golden_stdout)
         assert meta.get("session_id") == "test-session-001"
         assert meta.get("cli_version") == "2.1.47"
         assert meta.get("duration_ms") == 8500
@@ -236,14 +254,14 @@ class TestParseStreamJson:
 
     def test_tool_results_matched(self, golden_stdout):
         """Each tool_use should have a corresponding result."""
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(golden_stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(golden_stdout)
         for event in tool_events:
             assert event["result"] is not None, f"Tool {event['tool']} has no result"
 
     def test_survives_extra_fields(self):
         """Parser should not crash on unknown event types."""
         stdout = '{"type":"unknown_event","data":"foo"}\n{"type":"result","subtype":"success","result":"test","is_error":false,"duration_ms":100,"total_cost_usd":0.001,"num_turns":1,"session_id":"s1"}\n'
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(stdout)
         assert reply_text == "test"
         assert meta["duration_ms"] == 100
 
@@ -251,7 +269,7 @@ class TestParseStreamJson:
         """A text block missing 'text' key should be skipped, not crash."""
         stdout = json.dumps({"type": "assistant", "message": {"content": [{"type": "text"}]}}) + "\n"
         stdout += json.dumps({"type": "result", "result": "final", "is_error": False, "duration_ms": 50, "total_cost_usd": 0.0, "num_turns": 1}) + "\n"
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(stdout)
         assert reply_text == "final"
 
     def test_incomplete_tool_use_block_no_crash(self):
@@ -259,17 +277,27 @@ class TestParseStreamJson:
         stdout = json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1"}]}}) + "\n"  # missing 'name'
         stdout += json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Grep"}]}}) + "\n"  # missing 'id'
         stdout += json.dumps({"type": "result", "result": "ok", "is_error": False, "duration_ms": 1, "total_cost_usd": 0.0, "num_turns": 1}) + "\n"
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(stdout)
         assert len(tool_events) == 0  # Both should be skipped
 
     def test_result_event_preferred_over_intermediate_text(self):
         """The result event should be used as reply even when intermediate text exists."""
         stdout = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Let me search..."}]}}) + "\n"
         stdout += json.dumps({"type": "result", "result": '[{"question": "Q?", "golden_answer": "A long enough answer here."}]', "is_error": False, "duration_ms": 1, "total_cost_usd": 0.0, "num_turns": 1}) + "\n"
-        reply_text, reply_json, tool_events, meta = gen._parse_stream_json(stdout)
+        reply_text, reply_json, tool_events, meta, _reasoning = gen._parse_stream_json(stdout)
         # Should use the result event, not the intermediate "Let me search..."
         assert reply_json is not None
         assert reply_json[0]["question"] == "Q?"
+
+    def test_reasoning_blocks_captured(self):
+        """Intermediate assistant text blocks should be captured in reasoning_blocks."""
+        stdout = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Let me search for BERT..."}]}}) + "\n"
+        stdout += json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Found two papers about BERT."}]}}) + "\n"
+        stdout += json.dumps({"type": "result", "result": "final", "is_error": False, "duration_ms": 1, "total_cost_usd": 0.0, "num_turns": 1}) + "\n"
+        reply_text, reply_json, tool_events, meta, reasoning = gen._parse_stream_json(stdout)
+        assert len(reasoning) == 2
+        assert "Let me search for BERT..." in reasoning
+        assert "Found two papers about BERT." in reasoning
 
 
 # ---------------------------------------------------------------------------
