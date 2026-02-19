@@ -284,9 +284,10 @@ main() {
 
   local n_chains=200
   local model="sonnet"
-  local budget="0.50"
+  local budget="2.00"
   local batch_size=5
   local concurrency=3
+  local log_dir="./logs"
   local save_raw="n"
 
   if [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "3" ]; then
@@ -308,7 +309,7 @@ main() {
       3) model="haiku" ;;
     esac
 
-    budget=$(prompt_decimal "Max cost per Claude call (USD)" "0.50")
+    budget=$(prompt_decimal "Max cost per Claude call (USD)" "2.00")
     printf "\n"
 
     if prompt_yes_no "Configure advanced settings?" "n"; then
@@ -316,6 +317,8 @@ main() {
       batch_size=$(prompt_number "Batch size (pairs per call)" "5" 1 20)
       printf "\n"
       concurrency=$(prompt_number "Concurrency (parallel calls)" "3" 1 10)
+      printf "\n"
+      log_dir=$(prompt_text "Log directory" "$log_dir")
       printf "\n"
       if prompt_yes_no "Save raw Claude output for debugging?" "n"; then
         save_raw="y"
@@ -350,6 +353,7 @@ main() {
     print_item "Budget/call:" "\$$budget"
     print_item "Batch size:" "$batch_size"
     print_item "Concurrency:" "$concurrency"
+    print_item "Log directory:" "$log_dir"
     print_item "Raw output:" "$raw_output"
 
     if [ "$save_raw" = "y" ]; then
@@ -398,6 +402,7 @@ main() {
       --concurrency "$concurrency"
       --model "$model"
       --max-budget-usd "$budget"
+      --log-dir "$log_dir"
     )
     [ "$save_raw" = "y" ] && gen_cmd+=(--save-raw-runs)
 
@@ -438,6 +443,7 @@ main() {
 
   if [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "3" ]; then
     print_item "Raw chains:" "$raw_output"
+    print_item "Run logs:" "$log_dir"
   fi
   if [ "$mode" != "3" ] && [ "$mode" != "5" ]; then
     print_item "Validated chains:" "$validated_output"
