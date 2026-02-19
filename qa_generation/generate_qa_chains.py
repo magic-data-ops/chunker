@@ -620,13 +620,25 @@ def _pairs_to_chains(pairs: List[dict], category: dict, prompt_seed_file: str,
         sources = pair.get("source_files") or [prompt_seed_file]
 
         padded_sources = sources + [sources[-1]] * max(0, len(evidence) - len(sources))
+
+        # Build per-hop partial answers from entities or golden_answer
+        entities = pair.get("entities", [])
+        entity_descriptions = [e.get("description", "") for e in entities if e.get("description")]
+
         hop_path = []
         for i, (snip, src) in enumerate(zip(evidence, padded_sources)):
+            # Use entity description if available, otherwise golden_answer for last hop
+            if i < len(entity_descriptions):
+                partial = entity_descriptions[i]
+            elif i == len(evidence) - 1:
+                partial = a  # golden_answer
+            else:
+                partial = snip
             hop_path.append({
                 "hop_index": i,
                 "chunk_id": f"{src}:evidence_{i}",
                 "chunk_text": snip,
-                "partial_answer": snip,
+                "partial_answer": partial,
                 "retrieval_score": None,
             })
 
