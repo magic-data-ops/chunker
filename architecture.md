@@ -21,7 +21,7 @@ flowchart TB
         A_TXT["corpus_text/*.txt"]
     end
 
-    subgraph STEP2["Step 2 — Generate Q&A Chains"]
+    subgraph STEP2["Step 2 — Generate Eval Prompts"]
         direction TB
 
         subgraph CATS["Category Config (categories.yaml)"]
@@ -30,12 +30,12 @@ flowchart TB
             CAT_SC["single_chunk_factoid<br/>hops 1"]
         end
 
-        subgraph SEED_RUNTIME["Current Runtime Seeding (generate_qa_chains.py)"]
+        subgraph SEED_RUNTIME["Runtime Seeding (generate_qa_chains.py)"]
             S_CTX["Pick random passage from corpus_text/*.txt<br/>for SEED_CONTEXT"]
             S_ENT["SEED_ENTITY set to empty string"]
         end
 
-        RENDER["Prompt Renderer<br/>qa_gen_agent.txt<br/>injects: FILE_LIST · CATEGORY_NAME · CATEGORY_DESCRIPTION · N_PAIRS · SEED_CONTEXT · SEED_ENTITY"]
+        RENDER["Prompt Renderer<br/>qa_gen_agent.txt<br/>injects: FILE_LIST · CATEGORY_NAME<br/>CATEGORY_DESCRIPTION · N_PAIRS<br/>SEED_CONTEXT · SEED_ENTITY"]
 
         subgraph HARNESS["Claude Code CLI Subprocess"]
             OC_CMD["claude -p --output-format stream-json<br/>--dir corpus_text/"]
@@ -43,16 +43,16 @@ flowchart TB
             subgraph AGENT_GEN["Claude Agent"]
                 direction LR
                 A_MODEL["sonnet/opus/haiku · configurable"]
-                A_GREP["Grep (multi-word phrases)"]
-                A_READ["Read (±50 lines context)"]
-                A_OUT["JSON array of Q&A pairs"]
+                A_TOOLS["Grep · Read · Glob · Bash(ls/wc)"]
+                A_TASK["Task (spawn Explore subagents<br/>for parallel corpus search)"]
+                A_OUT["Rich JSON: question · golden_answer<br/>difficulty · entities · disambiguation"]
             end
         end
 
         subgraph POSTPROC["Post-Processing"]
             EXTRACT["JSON Extractor<br/>strip fences → json.loads → regex fallback"]
-            VALIDATE["Pair Validator<br/>question ends ? · answer ≥20ch<br/>evidence ≥20ch · hop count in range"]
-            CONVERT["Chain Converter<br/>UUID chain_id · hop_path construction<br/>chunk_id resolution via ChunkStore"]
+            VALIDATE["Pair Validator<br/>question ends ? · answer ≥20ch<br/>evidence ≥20ch · hop count in range<br/>entity evidence fallback"]
+            CONVERT["Chain Converter<br/>UUID chain_id · hop_path construction<br/>preserves difficulty · entities · disambiguation"]
         end
 
         CATS --> SEED_RUNTIME
@@ -60,6 +60,10 @@ flowchart TB
         RENDER --> HARNESS
         HARNESS --> EXTRACT
         EXTRACT --> VALIDATE --> CONVERT
+    end
+
+    subgraph LOGGING["Structured Run Logs"]
+        LOGS["logs/*.json<br/>reasoning · tool_calls · subagent_calls<br/>provenance · cost · duration"]
     end
 
     subgraph STEP3["Step 3 — Contractor Polish"]
@@ -101,6 +105,7 @@ flowchart TB
     STEP1 --> ARTIFACTS1
     ARTIFACTS1 --> STEP2
     STEP2 --> O_RAW
+    STEP2 --> LOGGING
     O_RAW --> STEP3
     STEP3 --> O_VAL
     O_VAL --> STEP4
@@ -110,6 +115,7 @@ flowchart TB
     style STEP2 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style STEP3 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style STEP4 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style LOGGING fill:#1a3a2e,stroke:#27ae60,color:#e0e0e0
     style HARNESS fill:#2d1b69,stroke:#8e44ad,color:#e0e0e0
     style SESSION fill:#2d1b69,stroke:#8e44ad,color:#e0e0e0
     style AGENT_GEN fill:#0f3460,stroke:#533483,color:#e0e0e0
@@ -126,7 +132,8 @@ flowchart LR
         subgraph GEN["Step 2: qa_generator"]
             GEN_M["claude -p (stream-json)"]
             GEN_T["model: configurable (sonnet/opus/haiku)"]
-            GEN_P["Allowed: Read · Grep · Glob · Bash(ls/wc)"]
+            GEN_P["Allowed: Read · Grep · Glob · Bash(ls/wc) · Task"]
+            GEN_S["Task tool spawns Explore subagents<br/>for parallel corpus search"]
         end
 
         subgraph CONT["Step 3: contractor_validator"]
@@ -146,29 +153,40 @@ flowchart LR
     style CONT fill:#1e3a5f,stroke:#2980b9,color:#e0e0e0
 ```
 
-## Step 2 Detail — Agentic grep/read Loop
+## Step 2 Detail — Agentic Search with Subagents
 
 ```mermaid
 sequenceDiagram
     participant PY as generate_qa_chains.py
     participant CC as claude -p (subprocess)
     participant AGENT as Claude (sonnet/opus/haiku)
+    participant SUB as Explore Subagent(s)
     participant FS as corpus_text/*.txt
 
-    PY->>CC: claude -p --output-format stream-json<br/>"Generate 5 entity_disambiguation pairs..."
+    PY->>CC: claude -p --output-format stream-json<br/>"Analyze corpus for entity_disambiguation..."
 
-    loop up to 50 agent steps
-        AGENT->>FS: grep "multi-word phrase"
-        FS-->>AGENT: matched lines + positions
-        AGENT->>FS: read file.txt (lines 100–200)
-        FS-->>AGENT: passage context
-        Note over AGENT: Evaluate evidence sufficiency.<br/>Chain to related concepts if multi-hop.
+    Note over AGENT: Phase 1 — Explore the Source
+
+    AGENT->>FS: grep "multi-word phrase"
+    FS-->>AGENT: matched lines + positions
+
+    opt Parallel search via subagents
+        AGENT->>SUB: Task(Explore): "Search for BERT in robotics context"
+        AGENT->>SUB: Task(Explore): "Search for BERT in NLP context"
+        SUB->>FS: grep / read in parallel
+        FS-->>SUB: results
+        SUB-->>AGENT: subagent results
     end
 
-    AGENT-->>CC: JSON array [{question, golden_answer,<br/>evidence_snippets, source_files}]
+    AGENT->>FS: read file.txt (lines 100–200)
+    FS-->>AGENT: passage context
+
+    Note over AGENT: Phase 2 — Construct Eval Prompts + Golden Responses
+
+    AGENT-->>CC: Rich JSON array [{question, golden_answer,<br/>difficulty, entities, disambiguation_statement,<br/>evidence_snippets, source_files, evidence_locations}]
     CC-->>PY: stdout stream-json events<br/>{type: "result", result: "[...]"}
 
-    Note over PY: _extract_json_array() → _validate_pair() → _pairs_to_chains()
+    Note over PY: _extract_json_array() → _validate_pair()<br/>→ _pairs_to_chains() → _save_run_log()
 ```
 
 ## Step 3 Detail — Contractor Validation
@@ -199,8 +217,11 @@ flowchart LR
         F3["question: str"]
         F4["final_answer: str"]
         F5["hop_count: int"]
-        F6["hop_path: &#91;{hop_index, chunk_id,<br/>chunk_text, partial_answer,<br/>retrieval_score, provenance}&#93;"]
-        F7["source_file · prompt_seed_file · termination_reason<br/>single_answer_heuristic · generated_at"]
+        F6["hop_path: &#91;{hop_index, chunk_id,<br/>chunk_text, partial_answer,<br/>retrieval_score}&#93;"]
+        F7["source_file · prompt_seed_file<br/>termination_reason · generated_at"]
+        F8["difficulty: easy|medium|hard"]
+        F9["entities: &#91;{label, description,<br/>evidence_snippet, evidence_location}&#93;"]
+        F10["disambiguation_statement: str"]
     end
 
     subgraph S3["Step 3 enriches with"]
@@ -225,6 +246,27 @@ flowchart LR
     S3 -->|"aggregate"| S4
 ```
 
+## Structured Run Logs
+
+Each `claude -p` invocation produces a JSON log file in `logs/`:
+
+```mermaid
+flowchart TB
+    subgraph LOG["logs/{category}_{run_id}.json"]
+        direction TB
+        L1["run_id · category · timestamp"]
+        L2["model · cost_usd · duration_ms"]
+        L3["prompt_seed_file"]
+        L4["reasoning: &#91;agent text blocks&#93;"]
+        L5["tool_calls: &#91;{tool, input,<br/>result_preview, result_length}&#93;"]
+        L6["subagent_calls: &#91;{subagent_type,<br/>description, result_preview}&#93;"]
+        L7["provenance_summary: {unique_files,<br/>grep_queries, total_content_read_chars}"]
+        L8["pairs_generated · pairs_valid · errors"]
+    end
+
+    style LOG fill:#1a3a2e,stroke:#27ae60,color:#e0e0e0
+```
+
 ## Resilience & Concurrency Patterns
 
 ```mermaid
@@ -235,10 +277,12 @@ flowchart TB
         RT["Retry<br/>max_retries=2 default on parse failure<br/>abort after 3× zero-progress"]
         CK["Checkpoints<br/>Step 3 saves every 50 chains"]
         JF["JSON Fallback<br/>strip fences → json.loads → regex"]
+        EF["Entity Evidence Fallback<br/>entities[].evidence_snippet → evidence_snippets"]
     end
 
     subgraph CONCURRENCY["Concurrency"]
-        S2C["Step 2: asyncio.Semaphore(3)<br/>category-level parallelism<br/>async subprocess · 600s timeout"]
+        S2C["Step 2: asyncio.Semaphore(3)<br/>category-level parallelism<br/>async subprocess · 900s timeout"]
+        S2SA["Step 2: Explore subagents<br/>parallel corpus search within each run"]
         S3C["Step 3: asyncio.Semaphore(32)<br/>chain-level parallelism<br/>HTTP session API · tqdm progress"]
         SH["Sharding<br/>--rank / --world_size<br/>category-level distribution"]
     end
@@ -249,33 +293,43 @@ flowchart TB
 ```mermaid
 flowchart TB
     LAUNCH["launch_qa_gen.py"]
+    RUN["run.sh (interactive TUI)"]
     S1["build_corpus_index.py (run directly)"]
 
     LAUNCH --> S2["generate_qa_chains.py"]
     LAUNCH --> S3["contractor_polish.py"]
     LAUNCH --> S4["validate_qa_dataset.py"]
+    RUN --> S1
+    RUN --> S2
+    RUN --> S3
+    RUN --> S4
 
     S2 --> YAML["qa_config/categories.yaml"]
+    S2 --> PROMPT["prompts/qa_gen_agent.txt"]
+    S2 --> LOGDIR["logs/*.json"]
 
     S3 --> LLM["utils/llm_client.py<br/>QAAgent"]
+    S3 --> VPROMPT["prompts/contractor_validator.txt"]
 
     style LAUNCH fill:#2d1b69,stroke:#8e44ad,color:#e0e0e0
+    style RUN fill:#2d1b69,stroke:#8e44ad,color:#e0e0e0
     style S1 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style S2 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style S3 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style S4 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style LOGDIR fill:#1a3a2e,stroke:#27ae60,color:#e0e0e0
 ```
 
 ## TL;DR — High-Level Flow
 
 ```mermaid
 flowchart LR
-    DOCS["📄 Documents"]
+    DOCS["Documents"]
     INDEX["1 · Index<br/>load + export text"]
-    GEN["2 · Generate<br/>agentic grep/read<br/>over corpus"]
+    GEN["2 · Generate<br/>agentic search<br/>with subagents"]
     VAL["3 · Validate<br/>LLM-as-judge<br/>scoring"]
     RPT["4 · Report<br/>aggregate<br/>metrics"]
-    OUT["✅ Scored<br/>QA Dataset"]
+    OUT["Scored<br/>QA Dataset"]
 
     DOCS --> INDEX
     INDEX --> GEN
