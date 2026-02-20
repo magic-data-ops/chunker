@@ -1,5 +1,10 @@
-You are analyzing a document corpus to help generate evaluation prompts for an LLM.
-Each evaluation prompt tests a single capability, denoted by its "category."
+You are analyzing a corpus of California state case law to generate evaluation
+prompts for an LLM. Each evaluation prompt tests a single capability, denoted
+by its "category."
+
+DOMAIN CONSTRAINT: All questions, answers, and evidence MUST come exclusively
+from California state case law found in this corpus. Do not reference federal
+cases, other states' cases, or non-legal content.
 
 You are operating inside the corpus directory. Available files:
 {{FILE_LIST}}
@@ -26,22 +31,39 @@ SEARCH STRATEGY:
 1. Start from the seed context above. Identify key multi-word phrases, names, or concepts.
 2. Use Glob to discover available .txt files if needed.
 3. Use Grep with specific multi-word phrases (2–4 words) to find relevant passages. Examples:
-   - Grep for "Attention Is All" — good (specific phrase)
-   - Grep for "attention" — bad (too generic, overwhelming results)
-   - Grep for "Spatial Transformer Networks" — good (specific title)
-   - Grep for "transformer" — bad (too broad)
+   - Grep for "Brown v. Board" — good (specific case name)
+   - Grep for "court" — bad (too generic, overwhelming results)
+   - Grep for "Penal Code Section 1119" — good (specific statute)
+   - Grep for "section" — bad (too broad)
 4. Use Read to gather full context around matches. Read enough surrounding lines
    (typically 30–100 lines around a hit) to fully understand the passage.
-5. Category-specific guidance:
-   - For entity_disambiguation: Search for a name, acronym, or term that appears in
-     the corpus. Find at least two passages where the same name refers to clearly
-     different entities (different systems, people, methods, domains). The more distinct
-     the contexts, the better.
+5. Category-specific search guidance:
+   - For cross_context_synthesis: Find multiple passages on the same legal topic from
+     different cases that must be combined for a complete picture.
+   - For long_context_citation: Find a specific fact and verify the exact case name,
+     volume, and page number from the corpus text.
+   - For hierarchy_comprehension: Find passages that show structural relationships —
+     majority vs dissent, headnotes vs holdings, procedural vs substantive.
+   - For entity_state_tracking: Find a party, statute, or legal standard that changes
+     across multiple proceedings or cases.
+   - For entity_disambiguation: Search for a name or term that appears in two or more
+     clearly different contexts (different cases, different parties, different legal
+     concepts). The more distinct the contexts, the better.
    - For multi_hop_reasoning: Search for a concept from the seed, then search for a
      related concept from what you found. Chain at least 2 separate passages from
      different parts of the corpus.
-   - For single_chunk_factoid: Find a single passage containing a complete,
-     self-contained fact.
+   - For semantic_deduplication: Find two passages from different cases stating the same
+     legal principle in different words.
+   - For temporal_ordering: Find events (filings, rulings, amendments) that appear out
+     of chronological order in the corpus.
+   - For domain_scoping: Find a legal principle and verify its jurisdictional or
+     subject-matter boundaries (civil vs criminal, state vs federal, etc.).
+   - For source_prioritization: Find conflicting holdings where one supersedes another
+     by recency, court authority, or specificity.
+   - For numerical_aggregation: Find multiple numerical facts (damages, counts, dates)
+     that require arithmetic to combine.
+   - For conflicting_information_synthesis: Find cases with opposing holdings, dissents,
+     or contradictory legal reasoning on the same issue.
 
 PARALLEL SEARCH WITH SUBAGENTS — STRONGLY RECOMMENDED:
 You have access to the Task tool which spawns Explore subagents. These subagents run
@@ -49,35 +71,23 @@ in parallel, each with their own context window, allowing you to search far more
 the corpus than you could alone. USE THEM AGGRESSIVELY.
 
 When to spawn subagents (do this by default for most searches):
-- For entity_disambiguation: Spawn 2–4 Explore agents, each searching for the same
-  term in a different context or domain. This is the BEST way to find disambiguation
-  opportunities.
-- For multi_hop_reasoning: Spawn one agent per concept you need to chain together.
-  Each agent explores one topic deeply while you coordinate the results.
-- For single_chunk_factoid: Spawn agents to survey different sections of large files
-  in parallel, then pick the best self-contained fact.
-
-How to use the Task tool:
-- Set subagent_type to "Explore"
-- Give each agent a focused search mission in the prompt
-- Agents can use Grep, Read, and Glob independently
-- Launch multiple agents simultaneously for maximum parallelism
+- Spawn 2–4 Explore agents, each searching for different aspects of the category.
+- Each agent can use Grep, Read, and Glob independently.
+- Launch multiple agents simultaneously for maximum parallelism.
 
 Example — entity disambiguation:
-  Task(subagent_type="Explore", prompt="Search the corpus for uses of 'BERT' related
-  to NLP or language models. Use Grep for 'BERT' and Read surrounding context. Report
-  all passages found with file names and line numbers.")
+  Task(subagent_type="Explore", prompt="Search the corpus for California cases
+  involving a party named 'Smith' in a property dispute. Use Grep for 'Smith' near
+  property-related terms. Report all passages with file names and line numbers.")
 
-  Task(subagent_type="Explore", prompt="Search the corpus for uses of 'BERT' related
-  to robotics or physical systems. Use Grep for 'BERT' and Read surrounding context.
-  Report all passages found with file names and line numbers.")
+  Task(subagent_type="Explore", prompt="Search the corpus for California cases
+  involving a party named 'Smith' in a criminal matter. Use Grep for 'Smith' near
+  criminal terms. Report all passages with file names and line numbers.")
 
-Example — multi-hop reasoning:
-  Task(subagent_type="Explore", prompt="Find all passages about attention mechanisms
-  in transformers. Report file, lines, and key facts.")
-
-  Task(subagent_type="Explore", prompt="Find all passages about computational
-  complexity of sequence models. Report file, lines, and key facts.")
+Example — temporal ordering:
+  Task(subagent_type="Explore", prompt="Find all passages mentioning dates, filings,
+  or procedural events related to property law. Report each with exact dates and
+  line numbers.")
 
 The subagents extend your effective context window — a single model can only read so
 much, but 3–4 parallel subagents can collectively survey the entire corpus. Always
@@ -88,27 +98,28 @@ EVIDENCE QUALITY — CRITICAL:
 Your evidence_snippets MUST be verbatim excerpts of COMPLETE SENTENCES from the corpus.
 
 GOOD evidence (full sentences, ≥50 characters):
-  "BERT stands for Bidirectional Encoder Representations from Transformers, a language representation model pre-trained on unlabeled text."
-  "The GPT cryptosystem, introduced by Gabidulin, Paramonov, and Trejtakov in 1991, is a public-key scheme based on rank codes."
+  "The court held that a defendant's right to oral witness examination could not be frittered away by compelling him to go to trial without the benefit of their testimony."
+  "This suit was brought to procure the cancellation of three warrants for the sum of fifteen hundred dollars each."
 
 BAD evidence (single words, fragments — these will be REJECTED):
-  "BERT"
-  "transformer"
-  "1991"
-  "the system"
+  "the court"
+  "property"
+  "1856"
+  "the defendant"
 
 Each evidence snippet must be:
 - A verbatim copy-paste from the corpus (no paraphrasing whatsoever)
 - At least 50 characters long
 - A complete sentence or meaningful clause
 - Directly supporting the answer
+- From California state case law
 
 PROCESS:
 
 Phase 1 — Explore the Source:
 1. Use Grep to search the corpus for content relevant to the "{{CATEGORY_NAME}}" capability.
 2. Use Read to gather sufficient surrounding context (read enough lines to fully
-   understand each passage — titles, authors, abstracts, key details).
+   understand each passage — case names, parties, holdings, key details).
 3. Identify {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus.
 
 Phase 2 — Construct Evaluation Prompts and Golden Responses:
@@ -117,43 +128,37 @@ For each example, craft:
 - QUESTION (the evaluation prompt): A detailed question that requires genuine capability
   in "{{CATEGORY_NAME}}" to answer correctly. The question must be answerable solely from
   the corpus and must be non-trivial. Must end with a question mark.
-  For entity_disambiguation: ask the LLM to find and distinguish the different entities.
-  Be specific about what information to provide (e.g., paper IDs, titles, definitions,
-  domains, disambiguation logic).
+  Be specific about what information to provide (e.g., case names, holdings, statutory
+  references, party names, dates).
 
 - GOLDEN_ANSWER (the ideal response): A comprehensive, structured answer that a
   top-performing LLM should produce. This is the ground-truth answer against which LLM
   responses will be scored — it must be thorough and precise. Include:
-  * Clearly labeled entities (Entity A, Entity B, etc.) with full supporting details
-  * Precise definitions using language from the source
-  * A disambiguation statement explaining how the entities differ
+  * All relevant case names, citations (volume Cal. page), and years
+  * Precise legal holdings using language from the source
+  * Clear structure with labeled sections where appropriate
   * All relevant facts, names, dates, and identifiers
 
-- DIFFICULTY: "easy", "medium", or "hard" based on how subtle the disambiguation is,
-  how many hops are needed, and how much domain knowledge is required.
+- DIFFICULTY: "easy", "medium", or "hard" based on how many passages must be found,
+  how subtle the reasoning is, and how much legal domain knowledge is required.
 
-- ENTITIES: An array of the distinct entities found, each with:
-  * label: a short identifier (e.g., "BERT — NLP Model", "BERT — Robot")
+- ENTITIES: An array of the key entities found, each with:
+  * label: a short identifier (e.g., "People v. Diaz — Confrontation Right")
   * description: what this entity is, using source language
   * evidence_snippet: verbatim excerpt (≥50 chars) supporting this entity
   * evidence_location: file and line range where this entity's evidence was found
 
-- DISAMBIGUATION_STATEMENT: A clear explanation of how the entities differ and what
-  signals distinguish one usage from another.
+- DISAMBIGUATION_STATEMENT: A clear explanation of how the entities or passages relate,
+  differ, or connect — appropriate to the category being tested.
 
 - SOURCE_FILES: filename(s) where evidence was found.
 
 QUALITY RULES:
-- Each question must be distinct — do not repeat the same entity, term, or concept.
+- Each question must be distinct — do not repeat the same case, entity, or concept.
 - The golden answer must be fully supported by the corpus (no hallucination).
   Every claim must trace back to a verbatim evidence snippet.
-- For entity_disambiguation: the question MUST name a term that appears in two or more
-  clearly different contexts in the corpus. The question should require the respondent
-  to distinguish between these different entities or usages.
-- For multi_hop_reasoning: the answer MUST combine facts from at least 2 different
-  evidence snippets. If either snippet were removed, the answer should become incomplete
-  or ambiguous. Single-source answers will be REJECTED.
-- For single_chunk_factoid: the full answer must be present in one continuous passage.
+- All content must come from California state case law in the corpus.
+- Evidence snippets must include enough context to verify the claim (case name, holding).
 
 OUTPUT FORMAT:
 Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown code fences.
@@ -161,23 +166,17 @@ Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown c
 [
   {
     "question": "<detailed evaluation prompt ending with ?>",
-    "golden_answer": "<comprehensive ideal response with labeled entities, definitions, and disambiguation>",
+    "golden_answer": "<comprehensive ideal response>",
     "difficulty": "<easy|medium|hard>",
     "entities": [
       {
-        "label": "<short entity identifier, e.g. BERT — NLP Model>",
+        "label": "<short entity identifier>",
         "description": "<what this entity is, from the source>",
         "evidence_snippet": "<verbatim sentence from corpus, ≥50 chars>",
         "evidence_location": {"file": "<filename>", "start_line": 100, "end_line": 150}
-      },
-      {
-        "label": "<short entity identifier, e.g. BERT — Robot>",
-        "description": "<what this entity is, from the source>",
-        "evidence_snippet": "<verbatim sentence from corpus, ≥50 chars>",
-        "evidence_location": {"file": "<filename>", "start_line": 2000, "end_line": 2050}
       }
     ],
-    "disambiguation_statement": "<how the entities differ and what signals distinguish them>",
+    "disambiguation_statement": "<how the entities/passages relate or differ>",
     "source_files": ["<filename>"],
     "evidence_snippets": ["<verbatim sentence ≥50 chars>", "<another verbatim sentence>"],
     "evidence_locations": [

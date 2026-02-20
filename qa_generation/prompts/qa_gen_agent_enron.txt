@@ -1,0 +1,196 @@
+You are analyzing the Enron email corpus to generate evaluation prompts for an
+LLM. Each evaluation prompt tests a single capability, denoted by its "category."
+
+DOMAIN CONSTRAINT: All questions, answers, and evidence MUST come exclusively
+from emails found in this corpus. Do not reference external information, news
+articles, or content not present in the email files.
+
+CORPUS STRUCTURE: The corpus contains emails grouped by user/mailbox. Each email
+is separated by divider lines with an index and FILE reference:
+================================================================================
+EMAIL N/TOTAL FILE: username/_folder/N.
+
+The email text includes standard headers (Message-ID, Date, From, To, Subject,
+Cc, Bcc, X-From, X-To, etc.) followed by the body.
+
+You are operating inside the corpus directory. Available files:
+{{FILE_LIST}}
+
+---
+
+CATEGORY: {{CATEGORY_NAME}}
+CAPABILITY BEING EVALUATED: {{CATEGORY_DESCRIPTION}}
+
+---
+
+SEED CONTEXT (starting point — use this to orient your search):
+{{SEED_CONTEXT}}
+
+---
+
+Your task: look at the source material and find relevant content to create exactly
+{{N_PAIRS}} evaluation prompt(s) that test the "{{CATEGORY_NAME}}" capability.
+For each prompt, you must also provide the golden response (the ideal answer an LLM
+should produce).
+
+SEARCH STRATEGY:
+
+1. Start from the seed context above. Identify key names, email addresses, subjects, or topics.
+2. Use Glob to discover available .txt files if needed.
+3. Use Grep with specific multi-word phrases (2–4 words) to find relevant passages. Examples:
+   - Grep for "kenneth.lay@enron.com" — good (specific email address)
+   - Grep for "email" — bad (too generic, overwhelming results)
+   - Grep for "California Power Exchange" — good (specific entity)
+   - Grep for "meeting" — bad (too broad)
+   - Grep for "Subject: Re: Trading" — good (specific email pattern)
+   - Grep for "Enron" — bad (appears everywhere)
+4. Use Read to gather full context around matches. Read enough surrounding lines
+   (typically 30–100 lines around a hit) to fully understand the email including
+   headers, recipients, dates, and full body.
+5. Category-specific search guidance:
+   - For long_context_citation: Find a specific email and verify the exact sender,
+     date, subject line, recipients, and FILE reference from the corpus text.
+   - For hierarchy_comprehension: Find email threads showing reply chains, forwarding
+     patterns, CC hierarchies, or organizational reporting relationships.
+   - For entity_state_tracking: Find a person, project, or deal that changes state
+     across multiple emails — role changes, deal progression, project status updates.
+   - For entity_disambiguation: Search for a name that appears in two or more clearly
+     different contexts (different departments, different roles, different time periods,
+     or different people with the same name).
+   - For multi_hop_reasoning: Search for a topic from the seed, then search for related
+     information from what you found. Chain at least 2 separate emails from different
+     senders or threads.
+   - For semantic_deduplication: Find two emails from different senders or threads that
+     convey the same information in different words (e.g., forwarded announcements,
+     restated directives).
+   - For temporal_ordering: Find events (emails sent, meetings scheduled, decisions made)
+     that appear out of chronological order across different mailboxes.
+   - For domain_scoping: Find information and verify its organizational boundaries —
+     internal vs external, legal vs trading, one department vs another.
+   - For source_prioritization: Find conflicting or superseding emails where one takes
+     precedence by recency, authority, or directness.
+   - For numerical_aggregation: Find multiple numerical facts (dollar amounts, counts,
+     dates, participant lists) that require arithmetic to combine.
+   - For conflicting_information_synthesis: Find emails with opposing viewpoints,
+     contradictory information, or disagreements on the same topic.
+
+PARALLEL SEARCH WITH SUBAGENTS — STRONGLY RECOMMENDED:
+You have access to the Task tool which spawns Explore subagents. These subagents run
+in parallel, each with their own context window, allowing you to search far more of
+the corpus than you could alone. USE THEM AGGRESSIVELY.
+
+When to spawn subagents (do this by default for most searches):
+- Spawn 2–4 Explore agents, each searching for different aspects of the category.
+- Each agent can use Grep, Read, and Glob independently.
+- Launch multiple agents simultaneously for maximum parallelism.
+
+Example — entity disambiguation:
+  Task(subagent_type="Explore", prompt="Search the Enron corpus for emails involving
+  a person named 'Smith' in the trading division. Use Grep for 'Smith' near trading
+  terms. Report all passages with file names and line numbers.")
+
+  Task(subagent_type="Explore", prompt="Search the Enron corpus for emails involving
+  a person named 'Smith' in the legal department. Use Grep for 'Smith' near legal
+  terms. Report all passages with file names and line numbers.")
+
+Example — temporal ordering:
+  Task(subagent_type="Explore", prompt="Find all emails mentioning specific dates,
+  deadlines, or scheduled events related to the California energy crisis. Report
+  each with exact dates, senders, and line numbers.")
+
+The subagents extend your effective context window — a single model can only read so
+much, but 3–4 parallel subagents can collectively survey the entire corpus. Always
+prefer spawning subagents over sequential Grep/Read when the corpus is large.
+
+EVIDENCE QUALITY — CRITICAL:
+
+Your evidence_snippets MUST be verbatim excerpts of COMPLETE SENTENCES from the corpus.
+
+GOOD evidence (full sentences, ≥50 characters):
+  "Please let me know if you have any questions about the revised trading limits for the Western desk."
+  "Subject: Re: California Power Exchange -- As discussed in yesterday's meeting, we need to finalize the contract terms by Friday."
+
+BAD evidence (single words, fragments — these will be REJECTED):
+  "trading"
+  "meeting"
+  "2001"
+  "the desk"
+
+Each evidence snippet must be:
+- A verbatim copy-paste from the corpus (no paraphrasing whatsoever)
+- At least 50 characters long
+- A complete sentence or meaningful clause
+- Directly supporting the answer
+- From the Enron email corpus
+
+PROCESS:
+
+Phase 1 — Explore the Source:
+1. Use Grep to search the corpus for content relevant to the "{{CATEGORY_NAME}}" capability.
+2. Use Read to gather sufficient surrounding context (read enough lines to fully
+   understand each email — headers, sender, recipients, date, subject, body).
+3. Identify {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus.
+
+Phase 2 — Construct Evaluation Prompts and Golden Responses:
+For each example, craft:
+
+- QUESTION (the evaluation prompt): A detailed question that requires genuine capability
+  in "{{CATEGORY_NAME}}" to answer correctly. The question must be answerable solely from
+  the corpus and must be non-trivial. Must end with a question mark.
+  Be specific about what information to provide (e.g., sender names, dates, subject lines,
+  email content, organizational context).
+
+- GOLDEN_ANSWER (the ideal response): A comprehensive, structured answer that a
+  top-performing LLM should produce. This is the ground-truth answer against which LLM
+  responses will be scored — it must be thorough and precise. Include:
+  * All relevant sender/recipient names, email addresses, and dates
+  * Precise quotes from email bodies using language from the source
+  * Clear structure with labeled sections where appropriate
+  * All relevant facts, names, dates, and identifiers
+
+- DIFFICULTY: "easy", "medium", or "hard" based on how many emails must be found,
+  how subtle the reasoning is, and how scattered the evidence is.
+
+- ENTITIES: An array of the key entities found, each with:
+  * label: a short identifier (e.g., "Ken Lay — CEO Directive on Trading Limits")
+  * description: what this entity is, using source language
+  * evidence_snippet: verbatim excerpt (≥50 chars) supporting this entity
+  * evidence_location: file and line range where this entity's evidence was found
+
+- DISAMBIGUATION_STATEMENT: A clear explanation of how the entities or passages relate,
+  differ, or connect — appropriate to the category being tested.
+
+- SOURCE_FILES: filename(s) where evidence was found.
+
+QUALITY RULES:
+- Each question must be distinct — do not repeat the same email, entity, or topic.
+- The golden answer must be fully supported by the corpus (no hallucination).
+  Every claim must trace back to a verbatim evidence snippet.
+- All content must come from emails in the corpus.
+- Evidence snippets must include enough context to verify the claim (sender, date, content).
+
+OUTPUT FORMAT:
+Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown code fences.
+
+[
+  {
+    "question": "<detailed evaluation prompt ending with ?>",
+    "golden_answer": "<comprehensive ideal response>",
+    "difficulty": "<easy|medium|hard>",
+    "entities": [
+      {
+        "label": "<short entity identifier>",
+        "description": "<what this entity is, from the source>",
+        "evidence_snippet": "<verbatim sentence from corpus, ≥50 chars>",
+        "evidence_location": {"file": "<filename>", "start_line": 100, "end_line": 150}
+      }
+    ],
+    "disambiguation_statement": "<how the entities/passages relate or differ>",
+    "source_files": ["<filename>"],
+    "evidence_snippets": ["<verbatim sentence ≥50 chars>", "<another verbatim sentence>"],
+    "evidence_locations": [
+      {"file": "<filename>", "start_line": 100, "end_line": 150},
+      {"file": "<filename>", "start_line": 2000, "end_line": 2050}
+    ]
+  }
+]
