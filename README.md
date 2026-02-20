@@ -5,12 +5,33 @@ Automated pipeline that uses Claude Code CLI to generate scored Q&A evaluation m
 ## Workflow
 
 **1. Index** -- Load documents (.pdf/.txt/.md), extract plain text into `corpus_text/`. Generate a file manifest for the agent.
+```bash
+python qa_generation/build_corpus_index.py --input_dir ./docs --output_dir ./corpus_index
+```
 
 **2. Generate** -- For each evaluation category, spawn a Claude Code agent that autonomously searches the corpus (Grep/Read/Glob + parallel sub-agents), then returns structured Q&A chains with questions, golden answers, verbatim evidence snippets with file+line locations, entity metadata, and difficulty ratings. Each pair is validated (format, length, hop-count bounds) and saved atomically with full provenance logs. Runs in parallel across categories; supports multi-machine sharding.
+```bash
+python qa_generation/generate_qa_chains.py \
+  --corpus_text_dir ./corpus_text \
+  --output qa_chains_raw.json \
+  --samples-per-category 3 \
+  --model sonnet \
+  --max-budget-usd 1.00
+```
 
 **3. Validate** -- A second Claude agent scores every chain on two dimensions: **category suitability** and **answer completeness** (both 0.0--1.0). Chains with both scores >= 0.7 are approved; rejected chains get a written reason. The validator also produces a polished answer. Runs up to 32 validations in parallel.
+```bash
+python qa_generation/contractor_polish.py \
+  --input qa_chains_raw.json \
+  --output qa_chains_validated.json
+```
 
 **4. Report** -- Aggregate scores and check four dataset-level quality targets (all must be >= 80%): overall approval rate, mean category suitability, mean answer completeness, and threshold pass rate (both scores >= 0.8). Broken down per category with hop-count distribution.
+```bash
+python qa_generation/validate_qa_dataset.py \
+  --input qa_chains_validated.json \
+  --output validation_report.json
+```
 
 ## Corpora
 
