@@ -5,20 +5,20 @@
 ```mermaid
 flowchart TB
     subgraph INPUT["Document Corpus"]
-        PDF[".pdf (PyMuPDF)"]
+        PDF[".pdf"]
         TXT[".txt / .md"]
     end
 
-    subgraph STEP1["Step 1 — Build Corpus Index"]
+    subgraph STEP1["Step 1 — Build Corpus Index (PDF only)"]
         direction TB
-        LOAD["Load documents<br/>.txt · .md · .pdf (PyMuPDF)"]
+        LOAD["Load .pdf documents (PyMuPDF)<br/>extract text"]
         EXPORT["Export plain-text files<br/>for agent grep / read tools"]
 
         LOAD --> EXPORT
     end
 
-    subgraph ARTIFACTS1["Index Artifacts"]
-        A_TXT["corpus_text/*.txt"]
+    subgraph ARTIFACTS1["corpus_text/*.txt"]
+        A_TXT["Plain-text files<br/>ready for agent tools"]
     end
 
     subgraph STEP2["Step 2 — Generate Eval Prompts"]
@@ -102,8 +102,9 @@ flowchart TB
         O_RPT["validation_report.json"]
     end
 
-    INPUT --> STEP1
+    PDF -->|"needs extraction"| STEP1
     STEP1 --> ARTIFACTS1
+    TXT -->|"already plain text"| ARTIFACTS1
     ARTIFACTS1 --> STEP2
     STEP2 --> O_RAW
     STEP2 --> O_DEL
@@ -340,20 +341,23 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    DOCS["Documents"]
-    INDEX["1 · Index<br/>load + export text"]
+    PDF_IN[".pdf"]
+    TXT_IN[".txt / .md"]
+    INDEX["1 · Index<br/>PDF extraction<br/>(skip for .txt/.md)"]
     GEN["2 · Generate<br/>12 or 11 categories<br/>with subagents"]
     VAL["3 · Validate<br/>LLM-as-judge<br/>scoring"]
     RPT["4 · Report<br/>aggregate<br/>metrics"]
     OUT["Scored QA Dataset<br/>+ Grouped Deliverable + CSV"]
 
-    DOCS --> INDEX
+    PDF_IN --> INDEX
     INDEX --> GEN
+    TXT_IN --> GEN
     GEN --> VAL
     VAL --> RPT
     RPT --> OUT
 
-    style DOCS fill:#0f3460,stroke:#533483,color:#e0e0e0
+    style PDF_IN fill:#0f3460,stroke:#533483,color:#e0e0e0
+    style TXT_IN fill:#0f3460,stroke:#533483,color:#e0e0e0
     style INDEX fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style GEN fill:#2d1b69,stroke:#8e44ad,color:#e0e0e0
     style VAL fill:#2d1b69,stroke:#8e44ad,color:#e0e0e0
