@@ -1,0 +1,126 @@
+categories:
+  - name: long_context_citation
+    display_name: "Retrieves information in a long context source and correctly cites its source"
+    description: >
+      Questions testing whether the model can locate a specific piece of
+      information within the Enron email corpus and accurately cite the
+      sender, recipient, date, subject line, or FILE reference from the
+      source email.
+    min_hops: 1
+    max_hops: 5
+    domain_scope: enron_email_corpus
+
+  - name: hierarchy_comprehension
+    display_name: "Ability to comprehend the hierarchy structure of a long text source"
+    description: >
+      Questions that require understanding the hierarchical organization of
+      email data — e.g., distinguishing original messages from replies and
+      forwards, understanding CC chains and reporting structures, parsing
+      nested email threads, or identifying organizational hierarchy from
+      sender/recipient patterns.
+    min_hops: 1
+    max_hops: 8
+    domain_scope: enron_email_corpus
+
+  - name: entity_state_tracking
+    display_name: "Tracks entity state changes across long, interleaved histories"
+    description: >
+      Questions requiring the model to track how an entity (person, project,
+      deal, or organizational unit) changes state across multiple interleaved
+      emails — e.g., a person's role changes across the company, a deal's
+      progression through negotiation stages, or a project's status updates
+      scattered across different mailboxes.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: entity_disambiguation
+    display_name: "Disambiguates distinct entities with identical or near-identical names across context"
+    description: >
+      Questions requiring the reader to distinguish two or more entities
+      sharing the same or near-identical name across different emails,
+      departments, contexts, or time periods within the Enron email corpus —
+      e.g., people with the same last name in different divisions, or the
+      same project name used for different initiatives.
+    min_hops: 1
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: multi_hop_reasoning
+    display_name: "Performs multi-hop reasoning across documents that are widely separated in context"
+    description: >
+      Questions whose complete answer requires synthesizing facts from two or
+      more non-adjacent emails that are widely separated in the corpus. No
+      single email is sufficient to answer the question — the model must
+      connect information across different senders, threads, or time periods.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: semantic_deduplication
+    display_name: "Deduplicates semantically identical information expressed differently across multiple sources"
+    description: >
+      Questions testing whether the model can identify that two or more emails
+      from different senders or threads express the same information, fact, or
+      directive using different wording (e.g., the same announcement forwarded
+      and restated by multiple people), and produce a deduplicated answer
+      rather than treating them as distinct information.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: temporal_ordering
+    display_name: "Reconstructs accurate temporal ordering from events scattered non-chronologically across context"
+    description: >
+      Questions requiring the model to reconstruct the correct chronological
+      sequence of events (emails sent, decisions made, meetings scheduled,
+      deals progressed) that appear out of order across different mailboxes
+      and email threads in the corpus.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: domain_scoping
+    display_name: "Correctly scopes information to its domain of applicability"
+    description: >
+      Questions testing whether the model correctly limits information to its
+      proper domain of applicability — e.g., distinguishing internal
+      communications from external, legal department matters from trading
+      floor operations, company policy from individual opinion, or one
+      business unit's decisions from another's.
+    min_hops: 1
+    max_hops: 8
+    domain_scope: enron_email_corpus
+
+  - name: source_prioritization
+    display_name: "Prioritizes information sources by recency, authority, or specificity when context contains superseded content"
+    description: >
+      Questions requiring the model to identify which of multiple conflicting
+      or overlapping emails takes precedence based on recency (later email
+      correcting earlier), authority (executive directive vs. peer suggestion),
+      or specificity (direct communication vs. forwarded summary).
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: numerical_aggregation
+    display_name: "Performs basic mathematical operations (sums, averages, or counts) across all entities in a long context source"
+    description: >
+      Questions requiring the model to perform arithmetic — counting emails,
+      summing financial amounts, tallying participants, computing date
+      differences, or aggregating other numerical data scattered across
+      multiple emails in the corpus.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
+
+  - name: conflicting_information_synthesis
+    display_name: "Synthesizes large amounts of conflicting information presenting a balance of views across multiple viewpoints"
+    description: >
+      Questions requiring the model to identify and fairly present multiple
+      conflicting viewpoints, contradictory directives, or disagreements
+      across different emails and senders, synthesizing them into a balanced
+      analysis rather than choosing one side.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: enron_email_corpus
