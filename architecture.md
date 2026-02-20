@@ -24,10 +24,9 @@ flowchart TB
     subgraph STEP2["Step 2 — Generate Eval Prompts"]
         direction TB
 
-        subgraph CATS["Category Config (categories.yaml)"]
-            CAT_ED["entity_disambiguation<br/>hops 1–3"]
-            CAT_MH["multi_hop_reasoning<br/>hops 2–4"]
-            CAT_SC["single_chunk_factoid<br/>hops 1"]
+        subgraph CATS["Category Configs"]
+            CAT_MAIN["categories.yaml — 12 categories<br/>domain: california_state_case_law<br/>cross_context_synthesis · long_context_citation<br/>hierarchy_comprehension · entity_state_tracking<br/>entity_disambiguation · multi_hop_reasoning<br/>semantic_deduplication · temporal_ordering<br/>domain_scoping · source_prioritization<br/>numerical_aggregation · conflicting_information_synthesis"]
+            CAT_ENRON["categories_enron.yaml — 11 categories<br/>domain: enron_email_corpus<br/>(same minus cross_context_synthesis)"]
         end
 
         subgraph SEED_RUNTIME["Runtime Seeding (generate_qa_chains.py)"]
@@ -35,7 +34,7 @@ flowchart TB
             S_ENT["SEED_ENTITY set to empty string"]
         end
 
-        RENDER["Prompt Renderer<br/>qa_gen_agent.txt<br/>injects: FILE_LIST · CATEGORY_NAME<br/>CATEGORY_DESCRIPTION · N_PAIRS<br/>SEED_CONTEXT · SEED_ENTITY"]
+        RENDER["Prompt Renderer<br/>qa_gen_agent.txt (or qa_gen_agent_enron.txt)<br/>injects: FILE_LIST · CATEGORY_NAME<br/>CATEGORY_DESCRIPTION · N_PAIRS<br/>SEED_CONTEXT · SEED_ENTITY"]
 
         subgraph HARNESS["Claude Code CLI Subprocess"]
             OC_CMD["claude -p --output-format stream-json<br/>--dir corpus_text/"]
@@ -43,7 +42,7 @@ flowchart TB
             subgraph AGENT_GEN["Claude Agent"]
                 direction LR
                 A_MODEL["sonnet/opus/haiku · configurable"]
-                A_TOOLS["Grep · Read · Glob · Bash(ls/wc)"]
+                A_TOOLS["Grep · Read · Glob · Bash(ls:*) · Bash(wc:*)"]
                 A_TASK["Task (spawn Explore subagents<br/>for parallel corpus search)"]
                 A_OUT["Rich JSON: question · golden_answer<br/>difficulty · entities · disambiguation"]
             end
@@ -69,7 +68,7 @@ flowchart TB
     subgraph STEP3["Step 3 — Contractor Polish"]
         direction TB
         FMT["Format hop path<br/>human-readable text block"]
-        RENDER3["Prompt Renderer<br/>contractor_validator.txt<br/>injects: CHAIN_ID · CATEGORY · HOP_PATH_TEXT · QUESTION"]
+        RENDER3["Prompt Renderer<br/>contractor_validator.txt<br/>injects: CHAIN_ID · CATEGORY · CATEGORY_DESCRIPTION<br/>HOP_COUNT · TERMINATION_REASON · QUESTION · HOP_PATH_TEXT"]
 
         subgraph SESSION["Claude Code CLI Subprocess"]
             S_CMD["claude -p --output-format json"]
@@ -97,6 +96,8 @@ flowchart TB
 
     subgraph OUTPUTS["Pipeline Outputs"]
         O_RAW["qa_chains_raw.json"]
+        O_DEL["qa_deliverable_grouped.json<br/>(grouped by category, N samples each)"]
+        O_CSV["qa_deliverable.csv<br/>(flat CSV export)"]
         O_VAL["qa_chains_validated.json"]
         O_RPT["validation_report.json"]
     end
@@ -105,6 +106,8 @@ flowchart TB
     STEP1 --> ARTIFACTS1
     ARTIFACTS1 --> STEP2
     STEP2 --> O_RAW
+    STEP2 --> O_DEL
+    STEP2 --> O_CSV
     STEP2 --> LOGGING
     O_RAW --> STEP3
     STEP3 --> O_VAL
@@ -132,7 +135,7 @@ flowchart LR
         subgraph GEN["Step 2: qa_generator"]
             GEN_M["claude -p (stream-json)"]
             GEN_T["model: configurable (sonnet/opus/haiku)"]
-            GEN_P["Allowed: Read · Grep · Glob · Bash(ls/wc) · Task"]
+            GEN_P["Allowed: Read · Grep · Glob · Bash(ls:*) · Bash(wc:*) · Task"]
             GEN_S["Task tool spawns Explore subagents<br/>for parallel corpus search"]
         end
 
@@ -213,7 +216,7 @@ flowchart LR
     subgraph S2["Step 2 produces"]
         direction TB
         F1["chain_id: UUID"]
-        F2["category: str"]
+        F2["category: str (12 or 11 categories)"]
         F3["question: str"]
         F4["final_answer: str"]
         F5["hop_count: int"]
@@ -222,6 +225,14 @@ flowchart LR
         F8["difficulty: easy|medium|hard"]
         F9["entities: &#91;{label, description,<br/>evidence_snippet, evidence_location}&#93;"]
         F10["disambiguation_statement: str"]
+        F11["evidence_locations: &#91;{file, start_line, end_line}&#93;"]
+        F12["single_answer_heuristic: bool<br/>context_span_lines: int<br/>provenance_report: {unique_files,<br/>grep_queries, total_content_read_chars}"]
+    end
+
+    subgraph DEL["Deliverable Export (grouped)"]
+        direction TB
+        D1["generated_at · domain_scope"]
+        D2["categories: &#91;{category_id, category_display_name,<br/>samples: &#91;{relevant_context,<br/>context_location_in_file,<br/>suggested_prompt, golden_response}&#93;}&#93;"]
     end
 
     subgraph S3["Step 3 enriches with"]
@@ -242,6 +253,7 @@ flowchart LR
         R4["target assessment (≥80% thresholds)"]
     end
 
+    S2 -->|"export"| DEL
     S2 -->|"+ validation"| S3
     S3 -->|"aggregate"| S4
 ```
@@ -283,7 +295,7 @@ flowchart TB
     subgraph CONCURRENCY["Concurrency"]
         S2C["Step 2: asyncio.Semaphore(3)<br/>category-level parallelism<br/>async subprocess · 900s timeout"]
         S2SA["Step 2: Explore subagents<br/>parallel corpus search within each run"]
-        S3C["Step 3: asyncio.Semaphore(32)<br/>chain-level parallelism<br/>HTTP session API · tqdm progress"]
+        S3C["Step 3: asyncio.Semaphore(32)<br/>chain-level parallelism<br/>CLI subprocess via QAAgent · tqdm progress"]
         SH["Sharding<br/>--rank / --world_size<br/>category-level distribution"]
     end
 ```
@@ -305,7 +317,9 @@ flowchart TB
     RUN --> S4
 
     S2 --> YAML["qa_config/categories.yaml"]
+    S2 --> YAML_E["qa_config/categories_enron.yaml"]
     S2 --> PROMPT["prompts/qa_gen_agent.txt"]
+    S2 --> PROMPT_E["prompts/qa_gen_agent_enron.txt"]
     S2 --> LOGDIR["logs/*.json"]
 
     S3 --> LLM["utils/llm_client.py<br/>QAAgent"]
@@ -318,6 +332,8 @@ flowchart TB
     style S3 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style S4 fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style LOGDIR fill:#1a3a2e,stroke:#27ae60,color:#e0e0e0
+    style YAML_E fill:#1a3a2e,stroke:#27ae60,color:#e0e0e0
+    style PROMPT_E fill:#1a3a2e,stroke:#27ae60,color:#e0e0e0
 ```
 
 ## TL;DR — High-Level Flow
@@ -326,10 +342,10 @@ flowchart TB
 flowchart LR
     DOCS["Documents"]
     INDEX["1 · Index<br/>load + export text"]
-    GEN["2 · Generate<br/>agentic search<br/>with subagents"]
+    GEN["2 · Generate<br/>12 or 11 categories<br/>with subagents"]
     VAL["3 · Validate<br/>LLM-as-judge<br/>scoring"]
     RPT["4 · Report<br/>aggregate<br/>metrics"]
-    OUT["Scored<br/>QA Dataset"]
+    OUT["Scored QA Dataset<br/>+ Grouped Deliverable + CSV"]
 
     DOCS --> INDEX
     INDEX --> GEN
