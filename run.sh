@@ -220,9 +220,10 @@ main() {
   local output_dir="./corpus_index"
   local corpus_dir="./corpus_text"
   local outputs_dir="./outputs"
-  local raw_output="$outputs_dir/qa_chains_raw.json"
-  local validated_output="$outputs_dir/qa_chains_validated.json"
-  local report_output="$outputs_dir/validation_report.json"
+  # Dynamic output naming derived after corpus_dir is known
+  local raw_output=""
+  local validated_output=""
+  local report_output=""
 
   # Build corpus — need docs directory
   if [ "$mode" = "1" ]; then
@@ -255,6 +256,22 @@ main() {
       print_success "Found $txt_count text file(s) in $corpus_dir"
     fi
 
+    # Derive dynamic output names from corpus stem + date
+    local corpus_stem
+    local txt_file_count
+    txt_file_count=$(find "$corpus_dir" -maxdepth 1 -name "*.txt" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$txt_file_count" -eq 1 ]; then
+      corpus_stem=$(basename "$(ls "$corpus_dir"/*.txt | head -1)" .txt)
+    else
+      corpus_stem=$(basename "$corpus_dir")
+    fi
+    local ts
+    ts=$(date +%Y%m%d)
+
+    raw_output="$outputs_dir/${corpus_stem}_${ts}_qa_chains_raw.json"
+    validated_output="$outputs_dir/${corpus_stem}_${ts}_qa_chains_validated.json"
+    report_output="$outputs_dir/${corpus_stem}_${ts}_validation_report.json"
+
     raw_output=$(prompt_text "Output file for raw chains" "$raw_output")
     printf "\n"
   fi
@@ -283,19 +300,21 @@ main() {
 
   # ── Step 3: Generation settings ──
 
-  local n_chains=200
+  local samples_per_cat=3
   local model="sonnet"
   local budget="2.00"
   local batch_size=5
   local concurrency=3
   local log_dir="$outputs_dir/logs"
+  local categories_cfg=""
+  local prompt_template=""
   local save_raw="n"
 
   if [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "3" ]; then
     printf "\n"
     print_step "Generation settings"
 
-    n_chains=$(prompt_number "Number of Q&A chains to generate" "200" 1 10000)
+    samples_per_cat=$(prompt_number "Samples per category" "3" 1 100)
     printf "\n"
 
     local model_choice
@@ -320,6 +339,10 @@ main() {
       concurrency=$(prompt_number "Concurrency (parallel calls)" "3" 1 10)
       printf "\n"
       log_dir=$(prompt_text "Log directory" "$log_dir")
+      printf "\n"
+      categories_cfg=$(prompt_text "Categories config (empty for default)" "")
+      printf "\n"
+      prompt_template=$(prompt_text "Prompt template (empty for default)" "")
       printf "\n"
       if prompt_yes_no "Save raw Claude output for debugging?" "n"; then
         save_raw="y"
@@ -349,7 +372,7 @@ main() {
 
   if [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "3" ]; then
     print_item "Corpus:" "$corpus_dir"
-    print_item "Chains:" "$n_chains"
+    print_item "Samples/category:" "$samples_per_cat"
     print_item "Model:" "$model"
     print_item "Budget/call:" "\$$budget"
     print_item "Batch size:" "$batch_size"
@@ -400,13 +423,15 @@ main() {
     local gen_cmd=(python3 qa_generation/generate_qa_chains.py
       --corpus_text_dir "$corpus_dir"
       --output "$raw_output"
-      --n_chains "$n_chains"
+      --samples-per-category "$samples_per_cat"
       --batch_size "$batch_size"
       --concurrency "$concurrency"
       --model "$model"
       --max-budget-usd "$budget"
       --log-dir "$log_dir"
     )
+    [ -n "$categories_cfg" ] && gen_cmd+=(--categories_cfg "$categories_cfg")
+    [ -n "$prompt_template" ] && gen_cmd+=(--prompt-template "$prompt_template")
     [ "$save_raw" = "y" ] && gen_cmd+=(--save-raw-runs)
 
     if ! run_step "Generate Q&A Chains" "${gen_cmd[@]}"; then
@@ -447,6 +472,7 @@ main() {
   if [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "3" ]; then
     print_item "Raw chains:" "$raw_output"
     print_item "Run logs:" "$log_dir"
+    print_item "Deliverable + CSV:" "(auto-named in output directory)"
   fi
   if [ "$mode" != "3" ] && [ "$mode" != "5" ]; then
     print_item "Validated chains:" "$validated_output"

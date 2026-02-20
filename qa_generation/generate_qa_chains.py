@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import hashlib
 import json
 import math
@@ -537,6 +538,11 @@ def _validate_pair(pair: dict, category: dict,
     a = pair.get("golden_answer", "").strip()
     evidence = pair.get("evidence_snippets", [])
 
+    # Auto-fix: append question mark if question looks valid but is missing one
+    if q and not q.endswith("?") and len(q) > 30:
+        q = q.rstrip(".") + "?"
+        pair["question"] = q
+
     # Fall back to entity-level evidence if top-level is empty
     if not evidence:
         entities = pair.get("entities", [])
@@ -777,11 +783,28 @@ def _save_run_log(
 
 
 def _ensure_corpus_claude_md(corpus_text_dir: str) -> None:
-    """Generate a CLAUDE.md in the corpus directory for Claude Code context."""
+    """Generate a CLAUDE.md in the corpus directory for Claude Code context.
+
+    Skips if the file already exists (user-maintained).
+    """
+    md_path = Path(corpus_text_dir) / "CLAUDE.md"
+    if md_path.exists():
+        return
     txt_files = sorted(Path(corpus_text_dir).glob("*.txt"))
     content = CORPUS_CLAUDE_MD_TEMPLATE.format(n_files=len(txt_files))
-    md_path = Path(corpus_text_dir) / "CLAUDE.md"
     md_path.write_text(content, encoding="utf-8")
+
+
+def _corpus_stem(corpus_text_dir: str) -> str:
+    """Derive corpus name from .txt files in the directory.
+
+    Single .txt file → use its stem (e.g. "enron_complete").
+    Multiple files → use directory name.
+    """
+    txt_files = sorted(Path(corpus_text_dir).glob("*.txt"))
+    if len(txt_files) == 1:
+        return txt_files[0].stem
+    return Path(corpus_text_dir).name or "corpus"
 
 
 # ---------------------------------------------------------------------------
@@ -937,13 +960,196 @@ async def generate_for_category(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Deliverable export
+# ---------------------------------------------------------------------------
+
+
+def _chain_to_deliverable_sample(chain: dict) -> dict:
+    """Convert an internal chain to the deliverable sample schema."""
+    # relevant_context: join evidence snippets
+    evidence = chain.get("hop_path", [])
+    context_parts = [hop.get("chunk_text", "") for hop in evidence if hop.get("chunk_text")]
+    if not context_parts:
+        # Fallback to evidence_snippets on the chain directly
+        for key in ("evidence_snippets",):
+            if key in chain and chain[key]:
+                context_parts = chain[key]
+                break
+
+    relevant_context = "\n\n".join(context_parts)
+
+    # context_location_in_file: from evidence_locations or hop path
+    locations = []
+    if chain.get("evidence_locations"):
+        for loc in chain["evidence_locations"]:
+            if loc.get("file") and loc.get("start_line") is not None and loc.get("end_line") is not None:
+                locations.append({
+                    "file": loc["file"],
+                    "start_line": loc["start_line"],
+                    "end_line": loc["end_line"],
+                })
+    # Fallback: entity-level locations
+    if not locations:
+        for ent in chain.get("entities", []):
+            eloc = ent.get("evidence_location", {})
+            if eloc.get("file") and eloc.get("start_line") is not None and eloc.get("end_line") is not None:
+                locations.append({
+                    "file": eloc["file"],
+                    "start_line": eloc["start_line"],
+                    "end_line": eloc["end_line"],
+                })
+
+    return {
+        "relevant_context": relevant_context,
+        "context_location_in_file": locations,
+        "suggested_prompt": chain.get("question", ""),
+        "golden_response": chain.get("final_answer", ""),
+    }
+
+
+def _validate_deliverable_sample(sample: dict) -> Tuple[bool, str]:
+    """Validate a single deliverable sample. Returns (ok, reason)."""
+    if not sample.get("relevant_context", "").strip():
+        return False, "empty relevant_context"
+    if not sample.get("context_location_in_file"):
+        return False, "no context_location_in_file"
+    if not sample.get("suggested_prompt", "").strip():
+        return False, "empty suggested_prompt"
+    if not sample.get("golden_response", "").strip():
+        return False, "empty golden_response"
+    return True, "ok"
+
+
+def _build_grouped_deliverable(
+    chains: List[dict],
+    categories: List[dict],
+    samples_per_category: int,
+) -> Tuple[dict, List[str]]:
+    """Build the grouped deliverable from internal chains.
+
+    Returns (deliverable_dict, errors_list).
+    Errors are category-level failures (e.g. wrong count).
+    """
+    # Group chains by category
+    by_cat: dict[str, list] = {}
+    for chain in chains:
+        cat_name = chain.get("category", "")
+        by_cat.setdefault(cat_name, []).append(chain)
+
+    # Build category lookup for display_name
+    cat_lookup = {c["name"]: c for c in categories}
+
+    errors: List[str] = []
+    category_blocks: List[dict] = []
+
+    for cat in categories:
+        cat_name = cat["name"]
+        cat_chains = by_cat.get(cat_name, [])
+
+        if len(cat_chains) < samples_per_category:
+            errors.append(
+                f"Category '{cat_name}': only {len(cat_chains)} samples, "
+                f"need {samples_per_category}"
+            )
+            continue
+
+        # Take exactly samples_per_category
+        selected = cat_chains[:samples_per_category]
+        samples = []
+        for chain in selected:
+            sample = _chain_to_deliverable_sample(chain)
+            ok, reason = _validate_deliverable_sample(sample)
+            if not ok:
+                errors.append(f"Category '{cat_name}': invalid sample — {reason}")
+                continue
+            samples.append(sample)
+
+        if len(samples) != samples_per_category:
+            errors.append(
+                f"Category '{cat_name}': only {len(samples)} valid samples "
+                f"after validation, need {samples_per_category}"
+            )
+            continue
+
+        category_blocks.append({
+            "category_id": cat_name,
+            "category_display_name": cat.get("display_name", cat_name),
+            "samples": samples,
+        })
+
+    domain_scopes = {c.get("domain_scope", "unknown") for c in categories}
+    domain_scope = domain_scopes.pop() if len(domain_scopes) == 1 else "mixed"
+
+    deliverable = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "domain_scope": domain_scope,
+        "categories": category_blocks,
+    }
+    return deliverable, errors
+
+
+def _atomic_save_dict(data: dict, path: str) -> None:
+    """Atomic save for a dict (deliverable format)."""
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    if os.path.exists(path):
+        os.remove(path)
+    os.rename(tmp, path)
+
+
+def _export_deliverable_csv(deliverable: dict, csv_path: str) -> None:
+    """Export the grouped deliverable to CSV with one row per sample.
+
+    Columns: description, relevant_context, context_location_in_file,
+             template_question, golden_response
+    """
+    parent = os.path.dirname(csv_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = csv_path + ".tmp"
+    with open(tmp, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "description",
+            "relevant_context",
+            "context_location_in_file",
+            "template_question",
+            "golden_response",
+        ])
+        for cat in deliverable.get("categories", []):
+            display_name = cat.get("category_display_name", cat.get("category_id", ""))
+            for sample in cat.get("samples", []):
+                writer.writerow([
+                    display_name,
+                    sample.get("relevant_context", ""),
+                    json.dumps(sample.get("context_location_in_file", []), indent=12),
+                    sample.get("suggested_prompt", ""),
+                    sample.get("golden_response", ""),
+                ])
+    if os.path.exists(csv_path):
+        os.remove(csv_path)
+    os.rename(tmp, csv_path)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Q&A chains via Claude Code CLI")
     parser.add_argument("--corpus_text_dir", default="corpus_text",
                         help="Directory of .txt files for Claude Code to Grep/Read")
     parser.add_argument("--output", default="qa_chains_raw.json")
-    parser.add_argument("--n_chains", type=int, default=200,
-                        help="Total chains to generate across all categories")
+    parser.add_argument("--n_chains", type=int, default=None,
+                        help="Total chains to generate (legacy; overridden by --samples-per-category)")
+    parser.add_argument("--samples-per-category", type=int, default=3,
+                        help="Exact number of samples to generate per category (default: 3)")
     parser.add_argument("--batch_size", type=int, default=5,
                         help="Q&A pairs to request per Claude Code invocation")
     parser.add_argument("--concurrency", type=int, default=3,
@@ -956,6 +1162,8 @@ async def main() -> None:
     parser.add_argument("--max-budget-usd", type=float, default=1.00,
                         help="Cost cap per Claude Code invocation in USD")
     parser.add_argument("--categories_cfg", default=None)
+    parser.add_argument("--prompt-template", default=None,
+                        help="Path to agent prompt template (default: prompts/qa_gen_agent.txt)")
     parser.add_argument("--max_retries", type=int, default=2,
                         help="Max retries per batch on parse failure")
     parser.add_argument("--min_answer_len", type=int, default=20,
@@ -968,6 +1176,14 @@ async def main() -> None:
                         help="Save per-run raw JSONL output for debugging")
     parser.add_argument("--log-dir", default="logs",
                         help="Directory for structured run logs (default: logs)")
+    parser.add_argument("--deliverable-output", default="qa_deliverable_grouped.json",
+                        help="Path for grouped deliverable export")
+    parser.add_argument("--csv-output", default="qa_deliverable.csv",
+                        help="Path for CSV deliverable export")
+    parser.add_argument("--export-deliverable", action="store_true", default=True,
+                        help="Export grouped deliverable after generation (default: true)")
+    parser.add_argument("--no-export-deliverable", action="store_false", dest="export_deliverable",
+                        help="Disable grouped deliverable export")
     parser.add_argument("--rank", type=int, default=0)
     parser.add_argument("--world_size", type=int, default=1)
     args = parser.parse_args()
@@ -976,6 +1192,17 @@ async def main() -> None:
     model = args.model
     max_budget_usd = args.max_budget_usd
     corpus_text_dir = str(Path(args.corpus_text_dir).resolve())
+
+    # Dynamic output naming: {corpus_stem}_{YYYYMMDD}_*
+    stem = _corpus_stem(corpus_text_dir)
+    ts = datetime.now().strftime("%Y%m%d")
+    if args.output == "qa_chains_raw.json":
+        args.output = f"{stem}_{ts}_qa_chains_raw.json"
+    if args.deliverable_output == "qa_deliverable_grouped.json":
+        args.deliverable_output = f"{stem}_{ts}_qa_deliverable_grouped.json"
+    if args.csv_output == "qa_deliverable.csv":
+        args.csv_output = f"{stem}_{ts}_qa_deliverable.csv"
+
     output_dir = str(Path(args.output).parent.resolve()) if os.path.dirname(args.output) else "."
 
     rng = random.Random(args.seed) if args.seed is not None else random.Random()
@@ -989,6 +1216,12 @@ async def main() -> None:
         cat_cfg = yaml.safe_load(f)
     categories: List[dict] = cat_cfg["categories"]
 
+    # Determine per-category target
+    samples_per_category = args.samples_per_category
+    if args.n_chains is not None:
+        # Legacy mode: split n_chains across categories
+        samples_per_category = max(1, args.n_chains // len(categories))
+
     # Sharding
     rank_categories = [c for i, c in enumerate(categories) if i % args.world_size == args.rank]
     if not rank_categories:
@@ -997,8 +1230,6 @@ async def main() -> None:
 
     if args.world_size > 1:
         args.output = args.output.replace(".json", f"_part{args.rank}.json")
-
-    per_category = max(1, args.n_chains // len(categories))
 
     # Resume
     existing: List[dict] = []
@@ -1014,13 +1245,16 @@ async def main() -> None:
                 existing = []
 
     rank_categories = [c for c in rank_categories
-                       if cat_counts.get(c["name"], 0) < per_category]
+                       if cat_counts.get(c["name"], 0) < samples_per_category]
     if not rank_categories:
         print("All categories complete.")
         return
-    gen_template = _load_prompt("qa_gen_agent.txt")
+    if args.prompt_template:
+        gen_template = Path(args.prompt_template).read_text(encoding="utf-8")
+    else:
+        gen_template = _load_prompt("qa_gen_agent.txt")
 
-    print(f"Generating {per_category} chains x {len(rank_categories)} categories "
+    print(f"Generating {samples_per_category} samples x {len(rank_categories)} categories "
           f"(concurrency={args.concurrency}, model={model}, claude={claude_bin})")
 
     semaphore = asyncio.Semaphore(args.concurrency)
@@ -1028,7 +1262,7 @@ async def main() -> None:
 
     async def _process(cat: dict) -> List[dict]:
         async with semaphore:
-            cat_remaining = per_category - cat_counts.get(cat["name"], 0)
+            cat_remaining = samples_per_category - cat_counts.get(cat["name"], 0)
             print(f"\n-> Category: {cat['name']} ({cat_remaining} pairs remaining)")
             chains = await generate_for_category(
                 category=cat,
@@ -1056,6 +1290,31 @@ async def main() -> None:
         _atomic_save(results, args.output)
 
     print(f"\nDone. {len(results)} total chains -> {args.output}")
+
+    # Export grouped deliverable
+    if args.export_deliverable:
+        deliverable, errors = _build_grouped_deliverable(
+            results, categories, samples_per_category,
+        )
+        if errors:
+            print(f"\nDeliverable export warnings:")
+            for err in errors:
+                print(f"  - {err}")
+        if deliverable["categories"]:
+            deliverable_path = args.deliverable_output
+            if not os.path.isabs(deliverable_path) and not os.path.dirname(deliverable_path):
+                deliverable_path = os.path.join(output_dir, deliverable_path)
+            _atomic_save_dict(deliverable, deliverable_path)
+            print(f"Deliverable: {len(deliverable['categories'])} categories -> {deliverable_path}")
+
+            # Export CSV
+            csv_path = args.csv_output
+            if not os.path.isabs(csv_path) and not os.path.dirname(csv_path):
+                csv_path = os.path.join(output_dir, csv_path)
+            _export_deliverable_csv(deliverable, csv_path)
+            print(f"CSV: {sum(len(c['samples']) for c in deliverable['categories'])} rows -> {csv_path}")
+        else:
+            print("\nDeliverable export FAILED: no categories met the required sample count.")
 
 
 if __name__ == "__main__":

@@ -48,15 +48,23 @@ def _run_step(
             python, str(script),
             "--corpus_text_dir", args.corpus_text_dir,
             "--output", raw_output,
-            "--n_chains", str(args.n_chains),
+            "--samples-per-category", str(args.samples_per_category),
             "--batch_size", str(args.batch_size),
             "--concurrency", str(args.concurrency),
             "--claude-bin", args.claude_bin,
             "--model", args.model,
             "--max-budget-usd", str(args.max_budget_usd),
+            "--deliverable-output", args.deliverable_output,
+            "--csv-output", args.csv_output,
         ]
+        if args.prompt_template:
+            cmd += ["--prompt-template", args.prompt_template]
+        if args.categories_cfg:
+            cmd += ["--categories_cfg", args.categories_cfg]
         if args.save_raw_runs:
             cmd += ["--save-raw-runs"]
+        if not args.export_deliverable:
+            cmd += ["--no-export-deliverable"]
         if args.world_size > 1:
             return _run_multi_rank_step2(python, script, args, raw_output)
 
@@ -98,7 +106,7 @@ def _run_multi_rank_step2(
             python, str(script),
             "--corpus_text_dir", args.corpus_text_dir,
             "--output", raw_output,
-            "--n_chains", str(args.n_chains),
+            "--samples-per-category", str(args.samples_per_category),
             "--batch_size", str(args.batch_size),
             "--concurrency", str(args.concurrency),
             "--claude-bin", args.claude_bin,
@@ -106,6 +114,7 @@ def _run_multi_rank_step2(
             "--max-budget-usd", str(args.max_budget_usd),
             "--rank", str(rank),
             "--world_size", str(args.world_size),
+            "--no-export-deliverable",
         ]
         if args.save_raw_runs:
             cmd += ["--save-raw-runs"]
@@ -156,14 +165,26 @@ def main() -> None:
     parser.add_argument("--model", default="sonnet",
                         choices=["sonnet", "opus", "haiku"],
                         help="Claude model to use (default: sonnet)")
-    parser.add_argument("--max-budget-usd", type=float, default=0.50,
+    parser.add_argument("--max-budget-usd", type=float, default=1.00,
                         help="Cost cap per Claude Code invocation in USD")
-    parser.add_argument("--n_chains", type=int, default=200)
+    parser.add_argument("--samples-per-category", type=int, default=3,
+                        help="Exact number of samples per category (default: 3)")
     parser.add_argument("--batch_size", type=int, default=5)
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--world_size", type=int, default=1)
     parser.add_argument("--save-raw-runs", action="store_true",
                         help="Save per-run raw JSONL output for debugging")
+    parser.add_argument("--deliverable-output", default="qa_deliverable_grouped.json",
+                        help="Path for grouped deliverable export")
+    parser.add_argument("--csv-output", default="qa_deliverable.csv",
+                        help="Path for CSV deliverable export")
+    parser.add_argument("--prompt-template", default=None,
+                        help="Path to agent prompt template")
+    parser.add_argument("--categories_cfg", default=None,
+                        help="Path to categories YAML config")
+    parser.add_argument("--export-deliverable", action="store_true", default=True,
+                        help="Export grouped deliverable (default: true)")
+    parser.add_argument("--no-export-deliverable", action="store_false", dest="export_deliverable")
     parser.add_argument("--raw_output", default="qa_chains_raw.json")
     parser.add_argument("--validated_output", default="qa_chains_validated.json")
     parser.add_argument("--report_output", default="validation_report.json")
