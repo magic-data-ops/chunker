@@ -30,8 +30,8 @@ class TestBuildReport:
 
     def test_per_category_breakdown(self, sample_chain):
         report = val.build_report([sample_chain])
-        assert "single_chunk_factoid" in report["per_category"]
-        cat = report["per_category"]["single_chunk_factoid"]
+        assert "long_context_citation" in report["per_category"]
+        cat = report["per_category"]["long_context_citation"]
         assert cat["total"] == 1
         assert cat["approved"] == 1
 

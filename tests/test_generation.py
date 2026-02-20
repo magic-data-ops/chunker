@@ -68,8 +68,9 @@ class TestValidatePair:
         assert not ok
         assert "no evidence" in reason
 
-    def test_hop_constraints_too_many(self, sample_pair, sample_category):
-        """single_chunk_factoid allows max_hops=1, so 2 snippets should fail."""
+    def test_hop_constraints_too_many(self, sample_pair):
+        """Category with max_hops=1 should reject 2 snippets."""
+        strict_cat = {"name": "test_strict", "description": "test", "min_hops": 1, "max_hops": 1}
         pair = {
             **sample_pair,
             "evidence_snippets": [
@@ -77,7 +78,7 @@ class TestValidatePair:
                 "The company later pivoted to electronics production in the mid-1960s.",
             ],
         }
-        ok, reason = gen._validate_pair(pair, sample_category)
+        ok, reason = gen._validate_pair(pair, strict_cat)
         assert not ok
         assert "too many" in reason
 
@@ -155,7 +156,7 @@ class TestPairsToChains:
             "single_answer_heuristic", "generated_at",
         }
         assert required_fields.issubset(chain.keys())
-        assert chain["category"] == "single_chunk_factoid"
+        assert chain["category"] == "long_context_citation"
         assert chain["hop_count"] >= 1
 
     def test_skips_empty_question_or_answer(self, sample_category):

@@ -16,10 +16,12 @@ import pytest
 @pytest.fixture
 def sample_category():
     return {
-        "name": "single_chunk_factoid",
-        "description": "Simple factual retrieval.",
+        "name": "long_context_citation",
+        "display_name": "Retrieves information in a long context source and correctly cites its source",
+        "description": "Simple factual retrieval with citation.",
         "min_hops": 1,
-        "max_hops": 1,
+        "max_hops": 5,
+        "domain_scope": "test_corpus",
     }
 
 
@@ -27,9 +29,11 @@ def sample_category():
 def multi_hop_category():
     return {
         "name": "multi_hop_reasoning",
+        "display_name": "Performs multi-hop reasoning across documents that are widely separated in context",
         "description": "Multi-hop reasoning questions.",
         "min_hops": 2,
-        "max_hops": 4,
+        "max_hops": 10,
+        "domain_scope": "test_corpus",
     }
 
 
@@ -49,7 +53,7 @@ def sample_pair():
 def sample_chain():
     return {
         "chain_id": "test-chain-001",
-        "category": "single_chunk_factoid",
+        "category": "long_context_citation",
         "source_file": "doc_0000_history.txt",
         "prompt_seed_file": "doc_0000_history.txt",
         "question": "What year was the company founded?",
