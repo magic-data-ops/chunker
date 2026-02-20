@@ -4,7 +4,7 @@ Automated pipeline that uses Claude Code CLI to generate scored Q&A evaluation m
 
 ## Workflow
 
-**1. Index** -- Load documents (.pdf/.txt/.md), extract plain text into `corpus_text/`. Generate a file manifest for the agent.
+**1. Index (PDF only)** -- Extract text from PDF documents into `corpus_text/` via PyMuPDF. Skip this step if your data is already `.txt` or `.md` -- place those files directly in `corpus_text/`.
 ```bash
 python qa_generation/build_corpus_index.py --input_dir ./docs --output_dir ./corpus_index
 ```
