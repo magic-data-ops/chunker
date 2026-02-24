@@ -205,11 +205,12 @@ main() {
 
   local mode
   mode=$(prompt_choice "What would you like to do?" \
-    "Full pipeline  (build corpus -> generate -> validate -> report)" \
-    "Generate + validate + report  (corpus already built)" \
+    "Full pipeline  (build corpus -> generate -> multi-turn -> validate -> report)" \
+    "Generate + multi-turn + validate + report  (corpus already built)" \
     "Just generate Q&A chains" \
     "Just validate existing chains" \
-    "Just generate report")
+    "Just generate report" \
+    "Just generate multi-turn wrapping  (chains already generated)")
   printf "\n"
 
   # ── Step 2: Paths ──
@@ -222,6 +223,7 @@ main() {
   local outputs_dir="./outputs"
   # Dynamic output naming derived after corpus_dir is known
   local raw_output=""
+  local multiturn_output=""
   local validated_output=""
   local report_output=""
 
@@ -269,11 +271,32 @@ main() {
     ts=$(date +%Y%m%d)
 
     raw_output="$outputs_dir/${corpus_stem}_${ts}_qa_chains_raw.json"
+    multiturn_output="$outputs_dir/${corpus_stem}_${ts}_qa_chains_multiturn.json"
     validated_output="$outputs_dir/${corpus_stem}_${ts}_qa_chains_validated.json"
     report_output="$outputs_dir/${corpus_stem}_${ts}_validation_report.json"
 
     raw_output=$(prompt_text "Output file for raw chains" "$raw_output")
     printf "\n"
+  fi
+
+  # Multi-turn wrapping — need existing raw chains (no corpus directory required)
+  if [ "$mode" = "6" ]; then
+    raw_output=$(prompt_text "Raw chains file to wrap" "$raw_output")
+    printf "\n"
+
+    if [ ! -f "$raw_output" ]; then
+      print_error "File '$raw_output' not found. Generate chains first."
+      exit 1
+    fi
+
+    # Derive multiturn output from raw file name
+    local raw_base
+    raw_base="${raw_output%.json}"
+    if [[ "$raw_base" == *_raw ]]; then
+      multiturn_output="${raw_base%_raw}_multiturn.json"
+    else
+      multiturn_output="${raw_base}_multiturn.json"
+    fi
   fi
 
   # Validation — need raw chains
@@ -350,6 +373,31 @@ main() {
     fi
   fi
 
+  # Multi-turn wrapping settings (lightweight — only model, budget, concurrency)
+  if [ "$mode" = "6" ]; then
+    printf "\n"
+    print_step "Multi-turn settings"
+
+    local model_choice
+    model_choice=$(prompt_choice "Claude model" \
+      "Sonnet  — good balance of speed and quality (recommended)" \
+      "Opus    — highest quality, slower, costs more" \
+      "Haiku   — fastest and cheapest, lower quality")
+
+    case "$model_choice" in
+      1) model="sonnet" ;;
+      2) model="opus" ;;
+      3) model="haiku" ;;
+    esac
+
+    budget=$(prompt_decimal "Max cost per Claude call (USD)" "2.00")
+    printf "\n"
+    concurrency=$(prompt_number "Concurrency (parallel calls)" "3" 1 10)
+    printf "\n"
+    categories_cfg=$(prompt_text "Categories config (empty for default)" "")
+    printf "\n"
+  fi
+
   # ── Step 4: Summary ──
 
   printf "\n"
@@ -357,11 +405,12 @@ main() {
 
   local steps_label=""
   case "$mode" in
-    1) steps_label="Build -> Generate -> Validate -> Report" ;;
-    2) steps_label="Generate -> Validate -> Report" ;;
+    1) steps_label="Build -> Generate -> Multi-Turn -> Validate -> Report" ;;
+    2) steps_label="Generate -> Multi-Turn -> Validate -> Report" ;;
     3) steps_label="Generate" ;;
     4) steps_label="Validate" ;;
     5) steps_label="Report" ;;
+    6) steps_label="Multi-Turn Wrapping" ;;
   esac
 
   print_item "Pipeline:" "$steps_label"
@@ -439,12 +488,36 @@ main() {
     fi
   fi
 
-  # Validate chains
+  # Generate multi-turn conversation history
+  if [ "$failed" = false ] && { [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "6" ]; }; then
+    local mt_cmd=(python3 qa_generation/generate_multiturn.py
+      --input "$raw_output"
+      --output "$multiturn_output"
+      --concurrency "$concurrency"
+      --model "$model"
+      --max-budget-usd "$budget"
+    )
+    [ -n "$categories_cfg" ] && mt_cmd+=(--categories_cfg "$categories_cfg")
+
+    if ! run_step "Generate Multi-Turn History" "${mt_cmd[@]}"; then
+      failed=true
+    fi
+  fi
+
+  # Validate chains (use multiturn output if available, otherwise raw)
   if [ "$failed" = false ] && { [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "4" ]; }; then
-    if ! run_step "Validate Chains" python3 qa_generation/contractor_polish.py \
-        --input "$raw_output" \
-        --output "$validated_output" \
-        --concurrency "$concurrency"; then
+    local validate_input="$raw_output"
+    if [ -n "${multiturn_output:-}" ] && [ -f "$multiturn_output" ]; then
+      validate_input="$multiturn_output"
+    fi
+    local validate_cmd=(python3 qa_generation/contractor_polish.py
+      --input "$validate_input"
+      --output "$validated_output"
+      --concurrency "$concurrency"
+    )
+    [ -n "$categories_cfg" ] && validate_cmd+=(--categories_cfg "$categories_cfg")
+
+    if ! run_step "Validate Chains" "${validate_cmd[@]}"; then
       failed=true
     fi
   fi
@@ -474,10 +547,13 @@ main() {
     print_item "Run logs:" "$log_dir"
     print_item "Deliverable + CSV:" "(auto-named in output directory)"
   fi
-  if [ "$mode" != "3" ] && [ "$mode" != "5" ]; then
+  if { [ "$mode" = "1" ] || [ "$mode" = "2" ] || [ "$mode" = "6" ]; } && [ -n "${multiturn_output:-}" ] && [ -f "$multiturn_output" ]; then
+    print_item "Multi-turn chains:" "$multiturn_output"
+  fi
+  if [ "$mode" != "3" ] && [ "$mode" != "5" ] && [ "$mode" != "6" ]; then
     print_item "Validated chains:" "$validated_output"
   fi
-  if [ "$mode" != "3" ] && [ "$mode" != "4" ]; then
+  if [ "$mode" != "3" ] && [ "$mode" != "4" ] && [ "$mode" != "6" ]; then
     print_item "Report:" "$report_output"
   fi
 

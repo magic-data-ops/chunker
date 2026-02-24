@@ -9,6 +9,13 @@ categories:
     min_hops: 1
     max_hops: 5
     domain_scope: enron_email_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      Early turns ask about emails near the target, establishing the
+      user's interest in a specific sender, thread, or time period.
+      The final evaluation question requires precise citation of a
+      specific email's metadata (sender, date, subject line, FILE
+      reference).
 
   - name: hierarchy_comprehension
     display_name: "Ability to comprehend the hierarchy structure of a long text source"
@@ -21,6 +28,13 @@ categories:
     min_hops: 1
     max_hops: 8
     domain_scope: enron_email_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      Early turns discuss an email thread at one level (e.g., the original
+      message or a top-level reply). The final evaluation question asks
+      the model to distinguish structural levels — original vs. reply,
+      direct recipients vs. CC, or organizational hierarchy from the
+      email patterns.
 
   - name: entity_state_tracking
     display_name: "Tracks entity state changes across long, interleaved histories"
@@ -33,6 +47,14 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation tracks a person, project, or deal across different
+      time points in the email corpus. Early turns ask about the entity's
+      initial state (early emails). Middle turns ask about changes
+      (later emails showing progression). The final evaluation question
+      asks the model to describe the full trajectory or compare states
+      across the timeline.
 
   - name: entity_disambiguation
     display_name: "Disambiguates distinct entities with identical or near-identical names across context"
@@ -45,6 +67,14 @@ categories:
     min_hops: 1
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation discusses one person or entity by name, establishing
+      their role and department from email evidence. Then it shifts to
+      discuss a different person or entity sharing the same name but in
+      a different department, role, or context. The final evaluation
+      question asks the model to disambiguate between the two entities
+      discussed throughout the conversation.
 
   - name: multi_hop_reasoning
     display_name: "Performs multi-hop reasoning across documents that are widely separated in context"
@@ -56,6 +86,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      Each turn explores a different email or thread, establishing
+      individual facts from different senders or time periods. The final
+      evaluation question requires combining facts from all discussed
+      emails through multi-hop reasoning to reach a conclusion that no
+      single email supports.
 
   - name: semantic_deduplication
     display_name: "Deduplicates semantically identical information expressed differently across multiple sources"
@@ -68,6 +105,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      An early turn presents information from one email using the sender's
+      original wording. The conversation then introduces the same
+      information from a different sender or thread stated differently.
+      The final evaluation question asks whether these convey the same
+      or different information, or asks for a single deduplicated summary.
 
   - name: temporal_ordering
     display_name: "Reconstructs accurate temporal ordering from events scattered non-chronologically across context"
@@ -79,6 +123,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation discusses emails and events in non-chronological
+      order across turns — mixing references to earlier and later events.
+      The final evaluation question asks the model to reconstruct the
+      correct chronological sequence from all events discussed in the
+      conversation.
 
   - name: domain_scoping
     display_name: "Correctly scopes information to its domain of applicability"
@@ -91,6 +142,13 @@ categories:
     min_hops: 1
     max_hops: 8
     domain_scope: enron_email_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      An early turn discusses information in a general context. The
+      conversation then narrows toward a specific organizational domain.
+      The final evaluation question tests whether the model correctly
+      scopes the information to its proper domain (internal vs. external,
+      legal vs. trading, one department vs. another).
 
   - name: source_prioritization
     display_name: "Prioritizes information sources by recency, authority, or specificity when context contains superseded content"
@@ -102,6 +160,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      Early turns present information from lower-priority emails (older,
+      less authoritative, or more general). Later turns introduce
+      higher-priority emails that supersede or correct the earlier
+      information. The final evaluation question asks which source
+      takes precedence and why.
 
   - name: numerical_aggregation
     display_name: "Performs basic mathematical operations (sums, averages, or counts) across all entities in a long context source"
@@ -113,6 +178,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation collects individual numerical facts from different
+      emails across turns. Each turn discusses a different data point
+      (an amount, a count, a date from a specific email). The final
+      evaluation question asks the model to perform arithmetic across
+      all numerical facts established in the conversation.
 
   - name: conflicting_information_synthesis
     display_name: "Synthesizes large amounts of conflicting information presenting a balance of views across multiple viewpoints"
@@ -124,3 +196,11 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: enron_email_corpus
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation progressively presents conflicting information.
+      Early turns establish one viewpoint from a specific sender or
+      thread. Middle turns introduce contradictory information from
+      a different source. The history builds up multiple perspectives.
+      The final evaluation question asks the model to synthesize all
+      conflicting viewpoints into a balanced analysis.

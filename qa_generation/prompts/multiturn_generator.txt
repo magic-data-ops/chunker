@@ -1,0 +1,94 @@
+You are designing a multi-turn conversation history for an LLM evaluation prompt.
+The conversation history will precede a final evaluation question, creating a
+realistic testing scenario for the "{{CATEGORY_NAME}}" capability.
+
+CATEGORY: {{CATEGORY_NAME}}
+CAPABILITY BEING EVALUATED: {{CATEGORY_DESCRIPTION}}
+DIFFICULTY: {{DIFFICULTY}}
+
+---
+
+MULTI-TURN SCENARIO GUIDANCE:
+{{MULTITURN_SCENARIO}}
+
+---
+
+TASK: Generate exactly {{NUM_HISTORY_TURNS}} conversation turn pair(s) that form the
+chat history PRECEDING the final evaluation question below. The complete conversation
+will have {{NUM_TOTAL_TURNS}} total turns (each turn = one user message + one assistant
+response). You are generating the first {{NUM_HISTORY_TURNS}} turn(s); the final turn
+is the evaluation question and golden answer shown below for context.
+
+FINAL EVALUATION QUESTION (the last user message — do NOT include this in your output):
+{{QUESTION}}
+
+GOLDEN ANSWER (for context — the history should make this answer appropriate):
+{{GOLDEN_ANSWER}}
+
+---
+
+EVIDENCE FROM THE CORPUS (use these facts in the conversation):
+{{EVIDENCE_TEXT}}
+
+KEY ENTITIES:
+{{ENTITIES_TEXT}}
+
+CONTEXT / RELATIONSHIP:
+{{DISAMBIGUATION_STATEMENT}}
+
+---
+
+CONVERSATION DESIGN RULES:
+
+1. CATEGORY ALIGNMENT: The conversation history must SET UP the evaluation scenario
+   for "{{CATEGORY_NAME}}". The turns should create a context where the final
+   evaluation question naturally follows and where the category capability is
+   genuinely tested by the full conversation.
+
+2. NATURAL FLOW: The conversation should read like a real user interacting with an
+   AI assistant about a document corpus. Avoid robotic or forced transitions. Each
+   user message should logically follow from the previous assistant response.
+
+3. GROUNDED IN EVIDENCE: The assistant's responses in the history MUST be factually
+   grounded in the evidence snippets provided above. Reference real names, dates,
+   details, and facts from the corpus evidence. Do not invent facts.
+
+4. PROGRESSIVE SETUP: Build toward the evaluation question progressively:
+   - Early turns: establish context, introduce relevant topics or entities
+   - Middle turns: develop the scenario, add complexity or related information
+   - Later turns: narrow focus toward the specific evaluation question
+
+5. ASSISTANT ACCURACY: The assistant's responses in the conversation history should
+   be accurate and helpful. The evaluation tests the FINAL response, not history.
+
+6. NO ANSWER LEAKAGE: The conversation history must NOT reveal the complete answer
+   to the final evaluation question. It should set up the scenario and provide
+   partial context without giving away the specific answer being evaluated.
+   Individual facts may appear in the history, but the full synthesized answer
+   should not.
+
+7. APPROPRIATE LENGTH:
+   - User messages: 1-3 sentences. Natural, conversational questions or follow-ups.
+   - Assistant responses: 2-5 sentences. Informative but not exhaustive.
+
+8. ROLE CONSISTENCY: The user is someone exploring a document corpus and asking
+   questions about its content. The assistant is an AI helping them find and
+   understand information in the corpus.
+
+---
+
+OUTPUT FORMAT:
+Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown fences.
+
+[
+  {
+    "turn_index": 1,
+    "user": "<user message>",
+    "assistant": "<assistant response>"
+  },
+  {
+    "turn_index": 2,
+    "user": "<user message>",
+    "assistant": "<assistant response>"
+  }
+]

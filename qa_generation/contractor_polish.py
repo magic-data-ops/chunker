@@ -72,6 +72,20 @@ def _format_hop_path(hop_path: List[dict]) -> str:
     return "\n\n".join(lines)
 
 
+def _format_conversation_history(chain: dict) -> str:
+    """Format conversation history for the contractor validator prompt."""
+    history = chain.get("conversation_history", [])
+    if not history:
+        return ""
+    lines = []
+    for turn in history:
+        idx = turn.get("turn_index", "?")
+        lines.append(f"[Turn {idx}]")
+        lines.append(f"  User: {turn.get('user', '')}")
+        lines.append(f"  Assistant: {turn.get('assistant', '')}")
+    return "\n\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Contractor validation
 # ---------------------------------------------------------------------------
@@ -84,6 +98,9 @@ async def validate_chain(chain: dict, agent: QAAgent, validator_tpl: str,
         cat_desc = category_descriptions.get(cat_name, "")
         hop_path_text = _format_hop_path(chain.get("hop_path", []))
 
+        conversation_text = _format_conversation_history(chain)
+        num_turns = chain.get("num_turns", 1)
+
         prompt = _render(
             validator_tpl,
             CHAIN_ID=chain["chain_id"],
@@ -93,6 +110,8 @@ async def validate_chain(chain: dict, agent: QAAgent, validator_tpl: str,
             TERMINATION_REASON=chain.get("termination_reason", "unknown"),
             QUESTION=chain.get("question", ""),
             HOP_PATH_TEXT=hop_path_text,
+            CONVERSATION_HISTORY=conversation_text,
+            NUM_TURNS=str(num_turns),
         )
 
         raw = await agent.generate(prompt)
@@ -120,6 +139,8 @@ async def validate_chain(chain: dict, agent: QAAgent, validator_tpl: str,
                 "answer_completeness_score": 0.0,
                 "polished_answer": chain.get("final_answer", ""),
                 "rejection_reason": "contractor_parse_error",
+                "conversation_quality_score": None,
+                "answer_leakage_detected": None,
             }
 
         result = chain.copy()

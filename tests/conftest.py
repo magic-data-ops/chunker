@@ -73,3 +73,66 @@ def sample_chain():
         "category_suitability_score": 0.9,
         "answer_completeness_score": 0.85,
     }
+
+
+@pytest.fixture
+def sample_multiturn_chain():
+    return {
+        "chain_id": "test-chain-mt-001",
+        "category": "entity_disambiguation",
+        "source_file": "corpus_doc.txt",
+        "prompt_seed_file": "corpus_doc.txt",
+        "question": "How do the two Smith entities differ in this corpus?",
+        "final_answer": "John Smith was a plaintiff in a property case, while Robert Smith was a defendant in a criminal case.",
+        "hop_path": [
+            {
+                "hop_index": 0,
+                "chunk_id": "corpus_doc.txt:evidence_0",
+                "chunk_text": "John Smith filed a property dispute claim against the county in 2015.",
+                "partial_answer": "John Smith was a plaintiff in a property case.",
+                "retrieval_score": None,
+            },
+            {
+                "hop_index": 1,
+                "chunk_id": "corpus_doc.txt:evidence_1",
+                "chunk_text": "Robert Smith was charged with grand theft in People v. Smith, 2018.",
+                "partial_answer": "Robert Smith was a defendant in a criminal case.",
+                "retrieval_score": None,
+            },
+        ],
+        "hop_count": 2,
+        "termination_reason": "agent_complete",
+        "evidence_locations": [
+            {"file": "corpus_doc.txt", "start_line": 100, "end_line": 120},
+            {"file": "corpus_doc.txt", "start_line": 500, "end_line": 520},
+        ],
+        "difficulty": "medium",
+        "entities": [
+            {
+                "label": "John Smith — Property Plaintiff",
+                "description": "Plaintiff in a property dispute against the county",
+                "evidence_snippet": "John Smith filed a property dispute claim against the county in 2015.",
+                "evidence_location": {"file": "corpus_doc.txt", "start_line": 100, "end_line": 120},
+            },
+            {
+                "label": "Robert Smith — Criminal Defendant",
+                "description": "Defendant charged with grand theft",
+                "evidence_snippet": "Robert Smith was charged with grand theft in People v. Smith, 2018.",
+                "evidence_location": {"file": "corpus_doc.txt", "start_line": 500, "end_line": 520},
+            },
+        ],
+        "disambiguation_statement": "Two different individuals named Smith in different legal contexts.",
+        "num_turns": 3,
+        "conversation_history": [
+            {
+                "turn_index": 1,
+                "user": "I see references to someone named Smith in the corpus. Can you tell me about the property case?",
+                "assistant": "Yes, John Smith filed a property dispute claim against the county in 2015. He was the plaintiff seeking to resolve a boundary issue.",
+            },
+            {
+                "turn_index": 2,
+                "user": "Interesting. I also noticed a Smith in a criminal case. What can you tell me about that?",
+                "assistant": "That would be a different person — Robert Smith was charged with grand theft in People v. Smith in 2018. He was the defendant in that criminal proceeding.",
+            },
+        ],
+    }

@@ -8,6 +8,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 4
+    multiturn_scenario: >
+      Early turns ask about individual passages or cases in isolation.
+      The conversation builds up separate pieces of information from
+      different parts of the corpus. The final evaluation question asks
+      the model to synthesize these separate pieces into a unified answer
+      that no single passage could provide alone.
 
   - name: long_context_citation
     display_name: "Retrieves information in a long context source and correctly cites its source"
@@ -18,6 +25,12 @@ categories:
     min_hops: 1
     max_hops: 5
     domain_scope: california_state_case_law
+    num_turns: 3
+    multiturn_scenario: >
+      Early turns ask about content near the target passage, establishing
+      the general area of the corpus the user is interested in. The final
+      evaluation question requires precise citation of a specific case,
+      volume, page, or other metadata.
 
   - name: hierarchy_comprehension
     display_name: "Ability to comprehend the hierarchy structure of a long text source"
@@ -29,6 +42,13 @@ categories:
     min_hops: 1
     max_hops: 8
     domain_scope: california_state_case_law
+    num_turns: 3
+    multiturn_scenario: >
+      Early turns establish the structural context of a legal document —
+      discussing one level of the hierarchy (e.g., the majority opinion).
+      The final evaluation question asks the model to distinguish or
+      relate different structural levels (e.g., majority vs. dissent,
+      headnote vs. holding).
 
   - name: entity_state_tracking
     display_name: "Tracks entity state changes across long, interleaved histories"
@@ -40,6 +60,14 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation tracks an entity across different time points.
+      Early turns ask about the entity's initial state or an early
+      proceeding. Middle turns ask about intermediate changes. The final
+      evaluation question requires the model to describe the full state
+      trajectory or identify how the entity's status changed across all
+      proceedings discussed in the conversation.
 
   - name: entity_disambiguation
     display_name: "Disambiguates distinct entities with identical or near-identical names across context"
@@ -50,6 +78,14 @@ categories:
     min_hops: 1
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation history discusses one entity by name, establishing
+      facts about it in a specific context. Then the conversation naturally
+      shifts to discuss a different entity sharing the same or similar name
+      but in a different context, case, or time period. The final evaluation
+      question asks the model to clearly disambiguate between the entities
+      discussed throughout the conversation.
 
   - name: multi_hop_reasoning
     display_name: "Performs multi-hop reasoning across documents that are widely separated in context"
@@ -60,6 +96,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation establishes individual facts step by step. Each
+      turn explores a different piece of evidence from a different part
+      of the corpus. The final evaluation question requires combining
+      all established facts through multi-hop reasoning to reach a
+      conclusion that no single passage supports.
 
   - name: semantic_deduplication
     display_name: "Deduplicates semantically identical information expressed differently across multiple sources"
@@ -71,6 +114,14 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 3
+    multiturn_scenario: >
+      An early turn presents information from one source using its
+      original wording. The conversation then introduces the same
+      information from a different source stated differently. The final
+      evaluation question asks whether these are the same or different
+      principles, or asks the model to produce a single deduplicated
+      statement.
 
   - name: temporal_ordering
     display_name: "Reconstructs accurate temporal ordering from events scattered non-chronologically across context"
@@ -81,6 +132,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation presents events from the corpus in a non-chronological
+      order — mixing discussion of earlier and later events across turns.
+      The final evaluation question asks the model to reconstruct the
+      correct chronological sequence from all events discussed in the
+      conversation history.
 
   - name: domain_scoping
     display_name: "Correctly scopes information to its domain of applicability"
@@ -92,6 +150,13 @@ categories:
     min_hops: 1
     max_hops: 8
     domain_scope: california_state_case_law
+    num_turns: 3
+    multiturn_scenario: >
+      An early turn discusses a legal principle in a general context.
+      The conversation then narrows the discussion toward a specific
+      domain. The final evaluation question tests whether the model
+      correctly scopes the principle to its proper domain of applicability
+      rather than overgeneralizing.
 
   - name: source_prioritization
     display_name: "Prioritizes information sources by recency, authority, or specificity when context contains superseded content"
@@ -103,6 +168,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 4
+    multiturn_scenario: >
+      Early turns present information from lower-priority sources (older
+      cases, lower courts, broader dicta). Later turns introduce
+      higher-priority sources that supersede or narrow the earlier
+      information. The final evaluation question asks which source
+      takes precedence and why.
 
   - name: numerical_aggregation
     display_name: "Performs basic mathematical operations (sums, averages, or counts) across all entities in a long context source"
@@ -113,6 +185,13 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation collects individual numerical facts across turns.
+      Each turn discusses a different data point (an amount, a count,
+      a date). The final evaluation question asks the model to perform
+      arithmetic across all numerical facts established in the
+      conversation (sum, average, count, or comparison).
 
   - name: conflicting_information_synthesis
     display_name: "Synthesizes large amounts of conflicting information presenting a balance of views across multiple viewpoints"
@@ -124,3 +203,11 @@ categories:
     min_hops: 2
     max_hops: 10
     domain_scope: california_state_case_law
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation progressively presents conflicting viewpoints.
+      Early turns establish one legal position or holding. Middle turns
+      introduce a contrasting or contradictory position from a different
+      source. The history builds up multiple perspectives. The final
+      evaluation question asks the model to synthesize all conflicting
+      viewpoints into a balanced analysis.

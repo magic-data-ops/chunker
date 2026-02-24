@@ -6,6 +6,7 @@ CHAIN METADATA:
 - category_description: {{CATEGORY_DESCRIPTION}}
 - hop_count: {{HOP_COUNT}}
 - termination_reason: {{TERMINATION_REASON}}
+- num_turns: {{NUM_TURNS}}
 
 QUESTION:
 {{QUESTION}}
@@ -13,8 +14,10 @@ QUESTION:
 HOP PATH (in order):
 {{HOP_PATH_TEXT}}
 
+{{CONVERSATION_HISTORY}}
+
 TASK:
-Evaluate this Q&A chain on two dimensions:
+Evaluate this Q&A chain on the following dimensions:
 
 1. CATEGORY SUITABILITY (0.0 – 1.0):
    Does the question genuinely require the reasoning style of "{{CATEGORY}}"?
@@ -36,11 +39,26 @@ Evaluate this Q&A chain on two dimensions:
    Approve if BOTH scores >= 0.7 AND the polished answer is coherent.
    Reject otherwise.
 
+5. CONVERSATION QUALITY (0.0 – 1.0) — only score if num_turns > 1:
+   Does the conversation history naturally set up the evaluation scenario?
+   - 1.0 = conversation perfectly leads to the question, feels natural and grounded
+   - 0.5 = adequate but somewhat forced or artificial
+   - 0.0 = conversation is irrelevant or contradicts the evaluation
+   If num_turns is 1 (no conversation history), set to null.
+
+6. ANSWER LEAKAGE — only evaluate if num_turns > 1:
+   Does the conversation history avoid revealing the golden answer?
+   - false = the history sets up context without giving away the specific answer
+   - true = the answer is directly stated or heavily implied in the history
+   If num_turns is 1, set to false.
+
 OUTPUT: Respond with ONLY valid JSON matching this schema exactly:
 {
   "approved": <true|false>,
   "category_suitability_score": <float 0.0-1.0>,
   "answer_completeness_score": <float 0.0-1.0>,
   "polished_answer": "<string>",
-  "rejection_reason": <null or "string explaining why rejected">
+  "rejection_reason": <null or "string explaining why rejected">,
+  "conversation_quality_score": <float 0.0-1.0 or null>,
+  "answer_leakage_detected": <true|false>
 }

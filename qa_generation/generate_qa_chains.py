@@ -977,7 +977,8 @@ def _chain_to_deliverable_sample(chain: dict) -> dict:
                 context_parts = chain[key]
                 break
 
-    relevant_context = "\n\n".join(context_parts)
+    separator = "\n\n" + "." * 50 + "\n\n"
+    relevant_context = separator.join(context_parts)
 
     # context_location_in_file: from evidence_locations or hop path
     locations = []
@@ -1000,12 +1001,15 @@ def _chain_to_deliverable_sample(chain: dict) -> dict:
                     "end_line": eloc["end_line"],
                 })
 
-    return {
+    sample = {
         "relevant_context": relevant_context,
         "context_location_in_file": locations,
         "suggested_prompt": chain.get("question", ""),
         "golden_response": chain.get("final_answer", ""),
+        "num_turns": chain.get("num_turns", 1),
+        "conversation_history": chain.get("conversation_history", []),
     }
+    return sample
 
 
 def _validate_deliverable_sample(sample: dict) -> Tuple[bool, str]:
@@ -1018,6 +1022,17 @@ def _validate_deliverable_sample(sample: dict) -> Tuple[bool, str]:
         return False, "empty suggested_prompt"
     if not sample.get("golden_response", "").strip():
         return False, "empty golden_response"
+    # Validate multi-turn fields if present
+    num_turns = sample.get("num_turns", 1)
+    history = sample.get("conversation_history", [])
+    if num_turns > 1:
+        if len(history) != num_turns - 1:
+            return False, f"conversation_history length {len(history)} != num_turns-1 ({num_turns - 1})"
+        for i, turn in enumerate(history):
+            if not isinstance(turn, dict):
+                return False, f"conversation_history turn {i} is not a dict"
+            if not turn.get("user", "").strip() or not turn.get("assistant", "").strip():
+                return False, f"conversation_history turn {i} has empty user or assistant"
     return True, "ok"
 
 
@@ -1106,7 +1121,7 @@ def _export_deliverable_csv(deliverable: dict, csv_path: str) -> None:
     """Export the grouped deliverable to CSV with one row per sample.
 
     Columns: description, relevant_context, context_location_in_file,
-             template_question, golden_response
+             template_question, golden_response, num_turns, conversation_history
     """
     parent = os.path.dirname(csv_path)
     if parent:
@@ -1120,6 +1135,8 @@ def _export_deliverable_csv(deliverable: dict, csv_path: str) -> None:
             "context_location_in_file",
             "template_question",
             "golden_response",
+            "num_turns",
+            "conversation_history",
         ])
         for cat in deliverable.get("categories", []):
             display_name = cat.get("category_display_name", cat.get("category_id", ""))
@@ -1130,6 +1147,8 @@ def _export_deliverable_csv(deliverable: dict, csv_path: str) -> None:
                     json.dumps(sample.get("context_location_in_file", []), indent=12),
                     sample.get("suggested_prompt", ""),
                     sample.get("golden_response", ""),
+                    sample.get("num_turns", 1),
+                    json.dumps(sample.get("conversation_history", []), indent=2),
                 ])
     if os.path.exists(csv_path):
         os.remove(csv_path)

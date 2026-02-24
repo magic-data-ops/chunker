@@ -35,6 +35,31 @@ class TestBuildReport:
         assert cat["total"] == 1
         assert cat["approved"] == 1
 
+    def test_multiturn_metrics_present(self, sample_chain):
+        report = val.build_report([sample_chain])
+        assert "multiturn_metrics" in report
+        mt = report["multiturn_metrics"]
+        assert "total_multiturn" in mt
+        assert "total_single_turn" in mt
+        assert "turn_count_distribution" in mt
+
+    def test_multiturn_metrics_with_multiturn_chain(self, sample_multiturn_chain):
+        chain = {
+            **sample_multiturn_chain,
+            "approved": True,
+            "category_suitability_score": 0.9,
+            "answer_completeness_score": 0.85,
+            "conversation_quality_score": 0.8,
+            "answer_leakage_detected": False,
+        }
+        report = val.build_report([chain])
+        mt = report["multiturn_metrics"]
+        assert mt["total_multiturn"] == 1
+        assert mt["total_single_turn"] == 0
+        assert mt["mean_conversation_quality"] == pytest.approx(0.8)
+        assert mt["answer_leakage_count"] == 0
+        assert mt["answer_leakage_rate"] == pytest.approx(0.0)
+
 
 class TestPrintReport:
     def test_error_dict_handled(self, capsys):

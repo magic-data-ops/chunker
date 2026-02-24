@@ -140,6 +140,23 @@ class TestChainToDeliverableSample:
         sample = gen._chain_to_deliverable_sample(chain)
         assert len(sample["context_location_in_file"]) == 2
 
+    def test_multiturn_fields_included(self):
+        chain = _make_chain()
+        chain["num_turns"] = 3
+        chain["conversation_history"] = [
+            {"turn_index": 1, "user": "First question?", "assistant": "First answer."},
+            {"turn_index": 2, "user": "Second question?", "assistant": "Second answer."},
+        ]
+        sample = gen._chain_to_deliverable_sample(chain)
+        assert sample["num_turns"] == 3
+        assert len(sample["conversation_history"]) == 2
+
+    def test_single_turn_defaults(self):
+        chain = _make_chain()
+        sample = gen._chain_to_deliverable_sample(chain)
+        assert sample["num_turns"] == 1
+        assert sample["conversation_history"] == []
+
 
 # ---------------------------------------------------------------------------
 # Deliverable sample validation
@@ -200,6 +217,48 @@ class TestValidateDeliverableSample:
         ok, reason = gen._validate_deliverable_sample(sample)
         assert not ok
         assert "golden_response" in reason
+
+    def test_valid_multiturn_sample(self):
+        sample = {
+            "relevant_context": "Some text.",
+            "context_location_in_file": [{"file": "test.txt", "start_line": 1, "end_line": 10}],
+            "suggested_prompt": "What?",
+            "golden_response": "Answer.",
+            "num_turns": 3,
+            "conversation_history": [
+                {"turn_index": 1, "user": "First question about the topic?", "assistant": "First answer about the topic."},
+                {"turn_index": 2, "user": "Follow-up question here?", "assistant": "Follow-up answer here."},
+            ],
+        }
+        ok, reason = gen._validate_deliverable_sample(sample)
+        assert ok, reason
+
+    def test_wrong_history_length_fails(self):
+        sample = {
+            "relevant_context": "Some text.",
+            "context_location_in_file": [{"file": "test.txt", "start_line": 1, "end_line": 10}],
+            "suggested_prompt": "What?",
+            "golden_response": "Answer.",
+            "num_turns": 3,
+            "conversation_history": [
+                {"turn_index": 1, "user": "Only one turn here?", "assistant": "Only one turn here."},
+            ],
+        }
+        ok, reason = gen._validate_deliverable_sample(sample)
+        assert not ok
+        assert "conversation_history length" in reason
+
+    def test_single_turn_no_validation_needed(self):
+        sample = {
+            "relevant_context": "Some text.",
+            "context_location_in_file": [{"file": "test.txt", "start_line": 1, "end_line": 10}],
+            "suggested_prompt": "What?",
+            "golden_response": "Answer.",
+            "num_turns": 1,
+            "conversation_history": [],
+        }
+        ok, reason = gen._validate_deliverable_sample(sample)
+        assert ok, reason
 
 
 # ---------------------------------------------------------------------------
@@ -271,11 +330,15 @@ class TestBuildGroupedDeliverable:
         assert len(errors) == 2
         assert len(deliverable["categories"]) == 0
 
-    def test_samples_contain_only_required_fields(self, two_categories):
+    def test_samples_contain_required_fields(self, two_categories):
         chains = [_make_chain("entity_disambiguation") for _ in range(3)] + \
                  [_make_chain("multi_hop_reasoning") for _ in range(3)]
         deliverable, _ = gen._build_grouped_deliverable(chains, two_categories, 3)
-        required_keys = {"relevant_context", "context_location_in_file", "suggested_prompt", "golden_response"}
+        required_keys = {
+            "relevant_context", "context_location_in_file",
+            "suggested_prompt", "golden_response",
+            "num_turns", "conversation_history",
+        }
         for cat_block in deliverable["categories"]:
             for sample in cat_block["samples"]:
                 assert set(sample.keys()) == required_keys
@@ -346,6 +409,8 @@ class TestExportDeliverableCsv:
             "context_location_in_file",
             "template_question",
             "golden_response",
+            "num_turns",
+            "conversation_history",
         ]
 
     def test_csv_row_count(self, deliverable, tmp_path):

@@ -131,12 +131,27 @@ For each example, craft:
   Be specific about what information to provide (e.g., case names, holdings, statutory
   references, party names, dates).
 
+  FORMATTING: Structure the question for readability using newlines (\n). When a question
+  has multiple sub-parts, number them and place each on its own line. Use this pattern:
+
+  "Given [context],\n\n(1) [first sub-question],\n(2) [second sub-question], and\n(3) [third sub-question]?\n\nCite specific [evidence type] for each point."
+
+  Do NOT write questions as a single unbroken paragraph. Break them into logical parts.
+
 - GOLDEN_ANSWER (the ideal response): A comprehensive, structured answer that a
   top-performing LLM should produce. This is the ground-truth answer against which LLM
-  responses will be scored — it must be thorough and precise. Include:
+  responses will be scored — it must be thorough and precise.
+
+  FORMATTING: Use newlines (\n) and markdown-style structure for readability:
+  * Use **bold** for key names, dates, and section headers
+  * Use numbered sections (1., 2., 3.) for distinct points
+  * Separate major sections with blank lines (\n\n)
+  * Use > blockquotes for verbatim quotes from the source
+
+  Include:
   * All relevant case names, citations (volume Cal. page), and years
   * Precise legal holdings using language from the source
-  * Clear structure with labeled sections where appropriate
+  * Clear structure with labeled sections
   * All relevant facts, names, dates, and identifiers
 
 - DIFFICULTY: "easy", "medium", or "hard" based on how many passages must be found,

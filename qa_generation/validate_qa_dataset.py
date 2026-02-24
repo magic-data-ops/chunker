@@ -105,6 +105,37 @@ def build_report(chains: List[dict]) -> dict:
                                  "pass": threshold_pass_rate >= 0.80},
     }
 
+    # Multi-turn metrics
+    multiturn_chains = [c for c in chains if c.get("num_turns", 1) > 1]
+    single_turn_chains = [c for c in chains if c.get("num_turns", 1) <= 1]
+    turn_counts = [c.get("num_turns", 1) for c in chains]
+
+    multiturn_metrics: dict = {
+        "total_multiturn": len(multiturn_chains),
+        "total_single_turn": len(single_turn_chains),
+        "turn_count_distribution": _histogram(turn_counts),
+    }
+
+    if multiturn_chains:
+        conv_quality_scores = [
+            c["conversation_quality_score"]
+            for c in multiturn_chains
+            if isinstance(c.get("conversation_quality_score"), (int, float))
+        ]
+        leakage_evaluated = [
+            c for c in multiturn_chains
+            if c.get("answer_leakage_detected") is not None
+        ]
+        leakage_count = sum(
+            1 for c in leakage_evaluated if c.get("answer_leakage_detected") is True
+        )
+        if conv_quality_scores:
+            multiturn_metrics["mean_conversation_quality"] = _mean(conv_quality_scores)
+        multiturn_metrics["answer_leakage_count"] = leakage_count
+        multiturn_metrics["answer_leakage_rate"] = (
+            leakage_count / len(leakage_evaluated) if leakage_evaluated else 0.0
+        )
+
     return {
         "total_chains": total,
         "total_approved": len(approved),
@@ -112,6 +143,7 @@ def build_report(chains: List[dict]) -> dict:
         "per_category": per_category,
         "hop_distribution": hop_histogram,
         "termination_breakdown": termination_breakdown,
+        "multiturn_metrics": multiturn_metrics,
         "informational": {
             "mean_hop_count": _mean(hop_counts),
             "single_answer_heuristic_count": sum(
@@ -156,6 +188,18 @@ def print_report(report: dict) -> None:
     print("--- Termination Reasons ---")
     for reason, count in report.get("termination_breakdown", {}).items():
         print(f"  {reason}: {count}")
+
+    mt = report.get("multiturn_metrics", {})
+    if mt.get("total_multiturn", 0) > 0:
+        print()
+        print("--- Multi-Turn Metrics ---")
+        print(f"  Multi-turn chains:       {mt['total_multiturn']}")
+        print(f"  Single-turn chains:      {mt['total_single_turn']}")
+        if "mean_conversation_quality" in mt:
+            print(f"  Mean conv. quality:      {mt['mean_conversation_quality']:.2f}")
+        print(f"  Answer leakage count:    {mt.get('answer_leakage_count', 0)}")
+        print(f"  Answer leakage rate:     {mt.get('answer_leakage_rate', 0):.1%}")
+        print(f"  Turn count distribution: {mt.get('turn_count_distribution', {})}")
 
     print()
     info = report.get("informational", {})

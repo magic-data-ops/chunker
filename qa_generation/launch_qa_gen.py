@@ -33,6 +33,19 @@ PROJECT_DIR = SCRIPT_DIR.parent.resolve()
 # ---------------------------------------------------------------------------
 
 
+def _derive_multiturn_output(raw_output: str, explicit: str | None) -> str:
+    """Derive the multiturn output path from raw_output or an explicit override."""
+    if explicit:
+        return explicit
+    raw_path = Path(raw_output)
+    stem = raw_path.stem
+    if stem.endswith("_raw"):
+        new_stem = stem[: -len("_raw")] + "_multiturn"
+    else:
+        new_stem = stem + "_multiturn"
+    return str(raw_path.with_name(new_stem + raw_path.suffix))
+
+
 def _run_step(
     step: str,
     args: argparse.Namespace,
@@ -68,14 +81,36 @@ def _run_step(
         if args.world_size > 1:
             return _run_multi_rank_step2(python, script, args, raw_output)
 
-    elif step == "3":
-        script = SCRIPT_DIR / "contractor_polish.py"
+    elif step == "5":
+        script = SCRIPT_DIR / "generate_multiturn.py"
+        multiturn_output = _derive_multiturn_output(raw_output, args.multiturn_output)
         cmd = [
             python, str(script),
             "--input", raw_output,
+            "--output", multiturn_output,
+            "--concurrency", str(args.concurrency),
+            "--model", args.model,
+            "--max-budget-usd", str(args.max_budget_usd),
+        ]
+        if args.categories_cfg:
+            cmd += ["--categories_cfg", args.categories_cfg]
+
+    elif step == "3":
+        script = SCRIPT_DIR / "contractor_polish.py"
+        # Use multiturn output if it exists, unless --skip-multiturn was set
+        multiturn_output = _derive_multiturn_output(raw_output, args.multiturn_output)
+        if not args.skip_multiturn and os.path.exists(multiturn_output):
+            polish_input = multiturn_output
+        else:
+            polish_input = raw_output
+        cmd = [
+            python, str(script),
+            "--input", polish_input,
             "--output", validated_output,
             "--concurrency", str(args.concurrency),
         ]
+        if args.categories_cfg:
+            cmd += ["--categories_cfg", args.categories_cfg]
 
     elif step == "4":
         script = SCRIPT_DIR / "validate_qa_dataset.py"
@@ -156,8 +191,8 @@ def _run_multi_rank_step2(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Launch Q&A generation pipeline")
-    parser.add_argument("--step", choices=["2", "3", "4", "all"], default="2",
-                        help="Pipeline step(s) to run")
+    parser.add_argument("--step", choices=["2", "3", "4", "5", "all"], default="2",
+                        help="Pipeline step(s) to run (5 = multi-turn generation)")
     parser.add_argument("--corpus_text_dir", default="corpus_text",
                         help="Directory of .txt files for Claude Code to Grep/Read")
     parser.add_argument("--claude-bin", default="claude",
@@ -188,9 +223,16 @@ def main() -> None:
     parser.add_argument("--raw_output", default="qa_chains_raw.json")
     parser.add_argument("--validated_output", default="qa_chains_validated.json")
     parser.add_argument("--report_output", default="validation_report.json")
+    parser.add_argument("--multiturn_output", default=None,
+                        help="Path for multi-turn enriched chains (default: derived from raw_output)")
+    parser.add_argument("--skip-multiturn", action="store_true",
+                        help="Skip multi-turn generation step when running 'all'")
     args = parser.parse_args()
 
-    steps = ["2", "3", "4"] if args.step == "all" else [args.step]
+    if args.step == "all":
+        steps = ["2", "5", "3", "4"] if not args.skip_multiturn else ["2", "3", "4"]
+    else:
+        steps = [args.step]
     exit_code = 0
 
     for step in steps:
