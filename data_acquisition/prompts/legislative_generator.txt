@@ -1,0 +1,86 @@
+You are a legal document generator creating realistic legislative materials for a
+legal research corpus. Your task is to generate a {{DOC_TYPE}} document related
+to a specific statute that has been interpreted in court cases.
+
+DOCUMENT TYPE: {{DOC_TYPE}}
+STATUTE: {{STATUTE_CODE}}
+NUMBER OF COURT CASES INTERPRETING THIS STATUTE: {{NUM_CASES}}
+
+CASES THAT INTERPRET OR REFERENCE THIS STATUTE:
+{{RELATED_CASES}}
+
+---
+
+INSTRUCTIONS:
+
+Generate a realistic {{DOC_TYPE}} document related to {{STATUTE_CODE}}. Follow
+these rules strictly:
+
+1. CONSISTENCY: Reference the exact statute code provided. When mentioning court
+   interpretations, reference the actual case names and citations from the list above.
+
+2. STRUCTURE: Format the document as it would appear in real legislative/regulatory
+   practice:
+
+   For statutory_text:
+   - Full statutory section with section number
+   - Definitions subsection
+   - Substantive provisions with lettered/numbered subsections
+   - Exceptions and exemptions
+   - Penalties/remedies provisions
+   - Effective date provisions
+   - Cross-references to related statutory sections
+   The text should be detailed with nested subsections (a), (b), (c) etc., and
+   sub-subsections (1), (2), (3), reflecting real statutory complexity.
+
+   For committee_report:
+   - Committee name and session
+   - Purpose and summary
+   - Background and need for legislation
+   - Section-by-section analysis
+   - Cost estimate
+   - Regulatory impact assessment
+   - Dissenting/additional views (if applicable)
+   Include specific policy rationale explaining WHY the statute was written as it
+   was, including compromises and competing interests.
+
+   For floor_debate:
+   - Date and chamber identification
+   - Multiple speakers (Senator/Representative names — you may invent plausible names)
+   - Opening remarks by bill sponsor
+   - Supporting arguments from proponents
+   - Opposition arguments from critics
+   - Response and rebuttal
+   - Procedural motions
+   Include genuine disagreements about the statute's scope, potential for abuse,
+   economic impact, and constitutional concerns.
+
+   For regulatory_guidance:
+   - Agency name and date
+   - Purpose and scope
+   - Background (statutory authority)
+   - Interpretive guidance with numbered sections
+   - Examples and illustrations
+   - Applicability/effective date
+   - Contact information
+   The guidance should explain how the agency interprets ambiguous provisions in
+   the statute, potentially differing from some court interpretations listed above.
+
+3. LENGTH: Minimum 3,000 words for statutory text and committee reports, 4,000
+   words for floor debates, 2,500 words for regulatory guidance.
+
+4. LEGAL REALISM: The content should reflect genuine policy tensions and legal
+   complexities that real statutes embody. Reference specific problems the statute
+   was designed to address.
+
+5. CROSS-REFERENCES TO CASE LAW: Reference how courts have interpreted specific
+   provisions, noting where judicial interpretation may diverge from legislative
+   intent. This creates natural source_prioritization and conflicting_information
+   challenges.
+
+6. HIERARCHICAL STRUCTURE: Use proper legislative formatting with nested sections,
+   subsections, and cross-references. This creates natural hierarchy_comprehension
+   challenges.
+
+Generate the document text only. Do not include any JSON, metadata, or explanation
+outside the document itself. Start directly with the document header.

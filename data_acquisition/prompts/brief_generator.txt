@@ -1,0 +1,111 @@
+You are a legal document generator creating realistic litigation documents for a
+legal research corpus. Your task is to generate a {{DOC_TYPE}} document that
+references a real court case and related cases.
+
+DOCUMENT TYPE: {{DOC_TYPE}}
+
+TARGET CASE:
+  Case Name: {{CASE_NAME}}
+  Case ID: {{CASE_ID}}
+  Court: {{COURT}}
+  Date: {{DATE}}
+  Citations: {{CITATIONS}}
+
+PARTIES IN THIS CASE:
+{{PARTIES}}
+
+JUDGES:
+{{JUDGES}}
+
+RELATED CASES (from citation network):
+{{RELATED_CASES}}
+
+KEY STATUTES REFERENCED:
+{{STATUTES}}
+
+NUMERICAL FACTS FROM THE CASE:
+{{NUMERICAL_FACTS}}
+
+KEY HOLDINGS:
+{{HOLDINGS}}
+
+RELEVANT PORTIONS OF THE COURT OPINION:
+{{CASE_TEXT}}
+
+---
+
+INSTRUCTIONS:
+
+Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
+
+1. CONSISTENCY: Use the exact party names, judge names, case names, and statutory
+   references provided above. Do not invent new entities — only reference entities
+   from the provided context.
+
+2. CITATION ACCURACY: When citing cases, use the exact citation strings provided.
+   When referencing related cases, use their proper case names and citations.
+
+3. NUMERICAL ACCURACY: If the document involves monetary amounts (e.g., settlement
+   agreements, damages claims), use values consistent with the numerical facts
+   provided above. You may use round numbers close to the actual figures.
+
+4. STRUCTURE: Format the document as it would appear in real legal practice:
+
+   For plaintiff_brief / defendant_brief:
+   - Caption (case name, court, docket number)
+   - Table of Contents
+   - Statement of Issues
+   - Statement of Facts
+   - Argument (with numbered sections citing cases and statutes)
+   - Conclusion
+   - Signature block
+
+   For motion_summary_judgment:
+   - Caption
+   - Introduction
+   - Statement of Undisputed Material Facts
+   - Legal Standard
+   - Argument
+   - Conclusion
+
+   For motion_discovery:
+   - Caption
+   - Introduction
+   - Factual Background
+   - Discovery Requests or Objections
+   - Legal Analysis
+   - Conclusion
+
+   For settlement_agreement:
+   - Parties and Recitals
+   - Definitions
+   - Settlement Amount and Payment Terms
+   - Releases and Waivers
+   - Representations and Warranties
+   - Confidentiality
+   - Miscellaneous Provisions
+   - Signature Blocks
+
+   For court_order:
+   - Caption
+   - Background
+   - Legal Standard
+   - Analysis
+   - Order/Disposition
+   - Judge signature
+
+5. LENGTH: The document should be substantial — at minimum 3,000 words for briefs
+   and motions, 2,000 words for settlement agreements and court orders. Include
+   enough detail to be realistic.
+
+6. ARGUMENTATION: For briefs, present genuine legal arguments that reference the
+   holdings and reasoning from the real court opinion. The plaintiff brief should
+   argue one side, the defendant brief the other. Both should cite overlapping
+   but different sets of cases.
+
+7. CROSS-REFERENCES: Reference specific paragraphs, pages, or sections of the
+   court opinion where relevant (e.g., "As the court noted in its discussion of
+   the standard of review...").
+
+Generate the document text only. Do not include any JSON, metadata, or explanation
+outside the document itself. Start directly with the document header/caption.

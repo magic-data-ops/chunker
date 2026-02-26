@@ -1,0 +1,92 @@
+You are a legal scholarship generator creating realistic secondary source materials
+for a legal research corpus. Your task is to generate a {{DOC_TYPE}} document
+analyzing case law in the area of {{TOPIC}}.
+
+DOCUMENT TYPE: {{DOC_TYPE}}
+TOPIC AREA: {{TOPIC}}
+NUMBER OF CASES IN THIS TOPIC: {{NUM_CASES}}
+
+CASES IN THIS TOPIC AREA:
+{{CASES}}
+
+KEY STATUTES IN THIS AREA:
+{{STATUTES}}
+
+KEY HOLDINGS FROM CASES IN THIS AREA:
+{{HOLDINGS}}
+
+---
+
+INSTRUCTIONS:
+
+Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
+
+1. CONSISTENCY: Reference actual case names and citations from the list above.
+   Do not invent case names — only reference the real cases provided.
+
+2. STRUCTURE: Format the document as it would appear in real legal scholarship:
+
+   For law_review_article:
+   - Title and author byline (you may invent plausible academic author names
+     and law school affiliations)
+   - Abstract
+   - Introduction
+   - Part I: Background and Historical Development
+   - Part II: Current State of the Law (analyzing the provided cases)
+   - Part III: Analysis/Criticism/Proposal
+   - Part IV: Implications and Recommendations
+   - Conclusion
+   - Footnotes (inline, numbered) referencing the real cases
+   The article should identify and analyze circuit splits, conflicting holdings,
+   or evolving legal standards across the provided cases. This creates natural
+   conflicting_information_synthesis challenges.
+
+   For practice_guide:
+   - Title and publisher information
+   - Scope and Purpose
+   - Overview of the Legal Framework
+   - Key Concepts and Definitions
+   - Jurisdiction-by-Jurisdiction Analysis (using the real jurisdictions from
+     the case list)
+   - Common Issues and Pitfalls
+   - Checklists and Practice Tips
+   - Selected Case Summaries
+   This should summarize holdings across multiple jurisdictions, creating natural
+   cross_context_synthesis and domain_scoping challenges.
+
+   For treatise_section:
+   - Chapter and Section Numbers (e.g., "Chapter 7: Remedies, § 7.03 Specific
+     Performance")
+   - Black letter law statement
+   - Commentary explaining the rule
+   - Subsections with detailed analysis
+   - Case illustrations (referencing real cases)
+   - Cross-references to other treatise sections
+   - Practice notes
+   Use deep hierarchical numbering (§ 7.03[1][a][i]) and extensive cross-references
+   to create natural hierarchy_comprehension challenges.
+
+3. LENGTH: Minimum 5,000 words for law review articles, 4,000 words for practice
+   guides, 3,000 words for treatise sections.
+
+4. ANALYTICAL DEPTH: Go beyond mere case summaries. Analyze trends, identify
+   tensions between holdings, evaluate the reasoning of different courts, and
+   draw connections that require multi-hop reasoning to verify.
+
+5. TEMPORAL ANALYSIS: Discuss how the law has evolved over time, referencing dates
+   of the cases. Note where later cases modify, distinguish, or overrule earlier
+   ones. This creates natural temporal_ordering and source_prioritization challenges.
+
+6. NUMERICAL DATA: Where relevant, compile statistics about damages awarded,
+   success rates, or time periods across the cases. This creates natural
+   numerical_aggregation challenges.
+
+7. ENTITY TRACKING: Track how specific parties, judges, or legal standards appear
+   across multiple cases. This creates natural entity_state_tracking challenges.
+
+8. BALANCED VIEWPOINTS: For law review articles especially, present multiple sides
+   of legal debates. Identify where reasonable legal minds disagree and explain
+   both positions.
+
+Generate the document text only. Do not include any JSON, metadata, or explanation
+outside the document itself. Start directly with the document title/header.
