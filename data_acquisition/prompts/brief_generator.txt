@@ -58,7 +58,6 @@ Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
    - Statement of Facts
    - Argument (with numbered sections citing cases and statutes)
    - Conclusion
-   - Signature block
 
    For motion_summary_judgment:
    - Caption
@@ -84,7 +83,7 @@ Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
    - Representations and Warranties
    - Confidentiality
    - Miscellaneous Provisions
-   - Signature Blocks
+   End after Miscellaneous Provisions. Do NOT add signature blocks or notarization.
 
    For court_order:
    - Caption
@@ -92,7 +91,7 @@ Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
    - Legal Standard
    - Analysis
    - Order/Disposition
-   - Judge signature
+   End after the Order/Disposition section. Do NOT add a judge signature line.
 
 5. LENGTH: The document should be substantial — at minimum 3,000 words for briefs
    and motions, 2,000 words for settlement agreements and court orders. Include
@@ -107,5 +106,28 @@ Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
    court opinion where relevant (e.g., "As the court noted in its discussion of
    the standard of review...").
 
+8. CONTENT BOUNDARIES: End each document after its final substantive section:
+   briefs/motions end at "Conclusion", court orders end at "Order/Disposition",
+   settlement agreements end at "Miscellaneous Provisions". Do not write anything
+   after these sections.
+
 Generate the document text only. Do not include any JSON, metadata, or explanation
 outside the document itself. Start directly with the document header/caption.
+
+CRITICAL — READ THIS CAREFULLY: The following patterns are STRICTLY BANNED and must
+NEVER appear anywhere in the document. Violating any of these rules makes the output
+unusable:
+
+  - NO signature blocks ("Respectfully submitted", "/s/", "Attorney for...")
+  - NO placeholder brackets: [Address], [Phone], [Email], [Name], [Law Firm],
+    [Date], [City], [State], [Fax], [Title], [Counsel for...], [JUDGE SIGNATURE]
+  - NO blank signature lines (e.g., _______________)
+  - NO bar numbers or bar references ("Bar No.", "State Bar #")
+  - NO notarization sections ("STATE OF ___ / COUNTY OF ___", "Notary Public",
+    "sworn and subscribed", "My commission expires")
+  - NO certificate of service sections
+  - NO fake attorney names, addresses, phone numbers, fax numbers, or email addresses
+  - NO "SO ORDERED" followed by a judge signature line
+
+End the document IMMEDIATELY after the last paragraph of substantive legal analysis.
+Do not add any closing formalities, signature blocks, or administrative sections.

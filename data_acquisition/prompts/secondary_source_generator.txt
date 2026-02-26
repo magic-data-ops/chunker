@@ -90,3 +90,11 @@ Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
 
 Generate the document text only. Do not include any JSON, metadata, or explanation
 outside the document itself. Start directly with the document title/header.
+
+CRITICAL — STRICTLY BANNED PATTERNS (never include any of these):
+  - NO placeholder brackets: [Address], [Phone], [Email], [Name], [Date], [City],
+    [State], [Title], [Publisher], [University]
+  - NO blank signature lines (e.g., _______________)
+  - NO fake contact information, phone numbers, or email addresses
+End the document after the last substantive section (e.g., Conclusion or final
+practice note). Do not add closing formalities or administrative sections.

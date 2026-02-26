@@ -62,7 +62,6 @@ these rules strictly:
    - Interpretive guidance with numbered sections
    - Examples and illustrations
    - Applicability/effective date
-   - Contact information
    The guidance should explain how the agency interprets ambiguous provisions in
    the statute, potentially differing from some court interpretations listed above.
 
@@ -84,3 +83,11 @@ these rules strictly:
 
 Generate the document text only. Do not include any JSON, metadata, or explanation
 outside the document itself. Start directly with the document header.
+
+CRITICAL — STRICTLY BANNED PATTERNS (never include any of these):
+  - NO placeholder brackets: [Address], [Phone], [Email], [Name], [Date], [City],
+    [State], [Title], [Agency], [Contact], [Fax]
+  - NO blank signature lines (e.g., _______________)
+  - NO fake contact information, phone numbers, fax numbers, or email addresses
+  - NO signature blocks of any kind
+End the document after the last substantive section. Do not add closing formalities.

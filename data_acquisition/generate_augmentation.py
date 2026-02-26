@@ -164,6 +164,138 @@ def _get_statute_cases(statute_code: str, graph: dict, case_index: dict) -> list
 
 
 # ---------------------------------------------------------------------------
+# Post-processing: sanitizer and validator
+# ---------------------------------------------------------------------------
+
+
+# Regex for lines containing 3+ consecutive underscores (signature/fill-in lines)
+_RE_UNDERSCORE_LINE = re.compile(r"_{3,}")
+
+# Bracket placeholders — match lines containing [Address], [Phone], etc.
+_BRACKET_PLACEHOLDERS = re.compile(
+    r"\[(?:Address|Phone|Email|Name|Law Firm|Date|City|State|Fax|"
+    r"JUDGE SIGNATURE|Title|Counsel[^\]]*)\]",
+    re.IGNORECASE,
+)
+
+# Bar number lines
+_RE_BAR_NUMBER = re.compile(r"Bar\s+No\.|Bar\s+Number|State\s+Bar", re.IGNORECASE)
+
+# Notarization block opener: "STATE OF ___" followed soon by "COUNTY OF" / "PARISH OF"
+_RE_NOTARY_START = re.compile(
+    r"^[ \t]*STATE\s+OF\b", re.IGNORECASE,
+)
+_RE_NOTARY_CONFIRM = re.compile(
+    r"COUNTY\s+OF|PARISH\s+OF|Notary\s+Public|sworn\s+and\s+subscribed|"
+    r"My\s+commission\s+expires",
+    re.IGNORECASE,
+)
+
+# Certificate of service header
+_RE_CERT_SERVICE = re.compile(
+    r"^[ \t]*CERTIFICATE\s+OF\s+SERVICE", re.IGNORECASE,
+)
+
+# Signature-block openers (must appear at or near the start of a line)
+_RE_SIG_BLOCK = re.compile(
+    r"^[ \t]*(?:Respectfully\s+submitted|/s/\s|SO\s+ORDERED\s*[.,]?\s*$)",
+    re.IGNORECASE,
+)
+
+
+def sanitize_document(text: str) -> str:
+    """Strip synthetic artifacts (signature blocks, placeholders, notary sections, etc.)."""
+    lines = text.split("\n")
+    out: list[str] = []
+    skip_rest = False
+
+    for i, line in enumerate(lines):
+        if skip_rest:
+            break
+
+        # 1. Certificate of service → drop everything from here to end
+        if _RE_CERT_SERVICE.match(line):
+            break
+
+        # 2. Notarization block: STATE OF … followed by COUNTY/PARISH within 3 lines
+        if _RE_NOTARY_START.match(line):
+            lookahead = "\n".join(lines[i : i + 5])
+            if _RE_NOTARY_CONFIRM.search(lookahead):
+                break
+
+        # 3. Signature block openers → drop to end
+        if _RE_SIG_BLOCK.match(line):
+            # Keep "SO ORDERED" if it's followed by substantive text (the order
+            # disposition), but drop it if it's just a closing line before a
+            # judge signature.
+            if re.match(r"^[ \t]*SO\s+ORDERED", line, re.IGNORECASE):
+                remaining = "\n".join(lines[i + 1 :]).strip()
+                # If the remaining text is short boilerplate (< 200 chars) or
+                # starts with underscores / a date / signature, treat as tail.
+                if len(remaining) < 200 or _RE_UNDERSCORE_LINE.search(
+                    remaining.split("\n")[0] if remaining else ""
+                ):
+                    break
+                # Otherwise it's part of the order — keep it
+            else:
+                break
+
+        # 4. Lines with bracket placeholders → skip line
+        if _BRACKET_PLACEHOLDERS.search(line):
+            continue
+
+        # 5. Lines containing blank signature underscores
+        if _RE_UNDERSCORE_LINE.search(line):
+            continue
+
+        # 6. Bar number lines
+        if _RE_BAR_NUMBER.search(line):
+            continue
+
+        out.append(line)
+
+    # 7. Trim trailing blank lines
+    while out and out[-1].strip() == "":
+        out.pop()
+
+    return "\n".join(out)
+
+
+def validate_document(text: str, doc_id: str = "") -> list[str]:
+    """Return a list of remaining quality issues found after sanitization."""
+    issues: list[str] = []
+
+    if re.search(r"\[[^\]]{1,40}\]", text):
+        # Check for actual placeholder-style brackets (not legal citations like [1])
+        for m in re.finditer(r"\[([^\]]{1,40})\]", text):
+            content = m.group(1)
+            # Skip footnote numbers, citation pinpoints, and short numerics
+            if re.match(r"^\d+$", content):
+                continue
+            # Skip common legal citation patterns like [hereinafter ...]
+            if content.lower().startswith("hereinafter"):
+                continue
+            issues.append(f"bracketed placeholder: [{content}]")
+            if len(issues) >= 5:
+                break
+
+    if re.search(r"_{3,}", text):
+        issues.append("contains 3+ consecutive underscores")
+
+    if re.search(r"Bar\s+No", text, re.IGNORECASE):
+        issues.append("contains 'Bar No'")
+
+    if re.search(r"Notary\s+Public", text, re.IGNORECASE):
+        issues.append("contains 'Notary Public'")
+
+    if issues:
+        label = f" ({doc_id})" if doc_id else ""
+        logger.warning(f"Document quality issues{label}: {'; '.join(issues)}")
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # LLM generation
 # ---------------------------------------------------------------------------
 
@@ -239,6 +371,10 @@ async def generate_document(
         if not reply or len(reply) < 100:
             logger.warning(f"Short/empty response for {doc_type} {doc_id}")
             return None
+
+        # Post-process: strip synthetic artifacts, then validate
+        reply = sanitize_document(reply)
+        validate_document(reply, doc_id)
 
         return {
             "doc_id": doc_id,

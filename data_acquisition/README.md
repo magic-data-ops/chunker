@@ -211,6 +211,7 @@ data_acquisition/
   generate_augmentation.py     # Phase 3: LLM generation via OpenCode Zen API
   assemble_corpus.py           # Phase 4: merge into final corpus
   verify_corpus.py             # Phase 5: quality checks
+  check_overlap.py             # N-gram overlap check (synthetic vs source)
   prompts/
     brief_generator.txt        # Layer A prompt template
     legislative_generator.txt  # Layer B prompt template
@@ -227,6 +228,7 @@ corpus_text/legal_casebook/
     entity_graph.json          # Knowledge graph
     assembly_stats.json        # Corpus statistics
     verification_report.json   # Quality check results
+    overlap_report.json        # N-gram overlap report
   legal_casebook_complete.txt  # Final assembled corpus
 
 qa_generation/
