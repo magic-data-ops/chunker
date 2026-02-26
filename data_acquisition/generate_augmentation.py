@@ -54,9 +54,68 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-OPENCODE_ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
+OPENCODE_ZEN_BASE = "https://opencode.ai/zen/v1"
 CHARS_PER_TOKEN = 4.0
 SAVE_INTERVAL = 25  # Atomic save every N documents
+
+
+def _get_api_url(model: str) -> str:
+    """Return the correct OpenCode Zen endpoint URL for a model."""
+    if model.startswith("claude-"):
+        return f"{OPENCODE_ZEN_BASE}/messages"
+    if model.startswith("gpt-"):
+        return f"{OPENCODE_ZEN_BASE}/responses"
+    if model.startswith("gemini-"):
+        return f"{OPENCODE_ZEN_BASE}/models/{model}"
+    # Default: OpenAI chat/completions (kimi, minimax, glm, qwen, etc.)
+    return f"{OPENCODE_ZEN_BASE}/chat/completions"
+
+
+def _build_payload(model: str, prompt: str, max_tokens: int) -> dict:
+    """Build the request payload in the correct format for the model's API."""
+    if model.startswith("claude-"):
+        # Anthropic Messages API
+        return {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+    if model.startswith("gpt-"):
+        # OpenAI Responses API
+        return {
+            "model": model,
+            "max_output_tokens": max_tokens,
+            "input": [{"role": "user", "content": prompt}],
+        }
+    # OpenAI Chat Completions (kimi, minimax, glm, qwen, gemini, etc.)
+    return {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+
+def _extract_reply(model: str, data: dict) -> str | None:
+    """Extract the text reply from the API response based on model format."""
+    try:
+        if model.startswith("claude-"):
+            # Anthropic: {"content": [{"type": "text", "text": "..."}]}
+            for block in data["content"]:
+                if block.get("type") == "text":
+                    return block["text"]
+            return None
+        if model.startswith("gpt-"):
+            # OpenAI Responses: {"output": [{"type": "message", "content": [...]}]}
+            for item in data["output"]:
+                if item.get("type") == "message":
+                    for part in item["content"]:
+                        if part.get("type") == "output_text":
+                            return part["text"]
+            return None
+        # OpenAI Chat Completions: {"choices": [{"message": {"content": "..."}}]}
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return None
 
 # Document types per layer
 LAYER_A_TYPES = [
@@ -265,19 +324,19 @@ def validate_document(text: str, doc_id: str = "") -> list[str]:
     """Return a list of remaining quality issues found after sanitization."""
     issues: list[str] = []
 
-    if re.search(r"\[[^\]]{1,40}\]", text):
-        # Check for actual placeholder-style brackets (not legal citations like [1])
-        for m in re.finditer(r"\[([^\]]{1,40})\]", text):
-            content = m.group(1)
-            # Skip footnote numbers, citation pinpoints, and short numerics
-            if re.match(r"^\d+$", content):
-                continue
-            # Skip common legal citation patterns like [hereinafter ...]
-            if content.lower().startswith("hereinafter"):
-                continue
-            issues.append(f"bracketed placeholder: [{content}]")
-            if len(issues) >= 5:
-                break
+    # Only flag brackets that look like fill-in-the-blank placeholders
+    # (e.g., [Address], [Phone], [JUDGE SIGNATURE]) — not legal bracket
+    # insertions like [the official], [s], [emphasis added], etc.
+    _placeholder_re = re.compile(
+        r"\[(?:Address|Phone|Email|Name|Law Firm|Date|City|State|Fax|"
+        r"JUDGE SIGNATURE|Title|Counsel[^\]]*|Agency|Contact|"
+        r"Publisher|University)\]",
+        re.IGNORECASE,
+    )
+    for m in _placeholder_re.finditer(text):
+        issues.append(f"bracketed placeholder: {m.group()}")
+        if len(issues) >= 5:
+            break
 
     if re.search(r"_{3,}", text):
         issues.append("contains 3+ consecutive underscores")
@@ -314,11 +373,8 @@ async def generate_document(
 ) -> dict | None:
     """Generate a single synthetic document via OpenCode Zen HTTP API."""
     async with semaphore:
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }
+        url = _get_api_url(model)
+        payload = _build_payload(model, prompt, max_tokens)
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -328,7 +384,7 @@ async def generate_document(
         for attempt in range(max_retries):
             try:
                 async with session.post(
-                    OPENCODE_ZEN_URL,
+                    url,
                     json=payload,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=timeout),
@@ -361,10 +417,9 @@ async def generate_document(
             logger.error(f"Failed after {max_retries} retries: {doc_type} {doc_id}")
             return None
 
-        # Extract text from OpenAI-compatible response
-        try:
-            reply = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
+        # Extract text from model-specific response format
+        reply = _extract_reply(model, data)
+        if reply is None:
             logger.warning(f"Bad response structure for {doc_type} {doc_id}")
             return None
 
