@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
-from matplotlib.colors import to_hex, to_rgba
+from matplotlib.colors import ListedColormap, to_hex, to_rgba
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import pdist, squareform
@@ -31,29 +31,77 @@ try:
 except Exception:
     px = None
 
+
+def truncate_text(text, limit=120):
+    text = (text or "").strip().replace("\n", " ")
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+CATEGORY_PALETTE = [
+    "#4E79A7", "#59A14F", "#E15759", "#F28E2B", "#76B7B2",
+    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
+    "#86BCB6", "#D4A6C8", "#8CD17D", "#F1CE63", "#499894",
+    "#A0CBE8", "#FFBE7D", "#CFCFCF", "#B6992D", "#79706E",
+]
+
 # ── Load data ─────────────────────────────────────────────────────────────
-csv_path = Path(__file__).parent / "Official Eval Categories + Sets-import to sheets.csv"
+csv_path = Path(__file__).parent / "Test Cases-Grid view.csv"
+SKIP_FIRST_N = 500  # Skip older data format; rows after this use the new categories
 
 rows = []
 with open(csv_path, newline="", encoding="utf-8-sig") as f:
     reader = csv.DictReader(f)
-    for row in reader:
-        eval_set = row["Eval Set"].strip()
-        category = row["Eval Category"].strip()
-        if eval_set and category and category.lower() != "none":
-            rows.append({"eval_set": eval_set, "category": category})
+    all_rows = list(reader)
+    for row in all_rows[SKIP_FIRST_N:]:
+        eval_set = row.get("eval_set", "").strip()
+        category = row.get("category", "").strip()
+        subcategory = row.get("subcategory", "").strip()
+        eval_id = row.get("eval_id", "").strip()
+        eval_prompt = row.get("eval_prompt", "").strip()
+        if eval_set and category:
+            rows.append({
+                "eval_set": eval_set,
+                "category": category,
+                "subcategory": subcategory,
+                "eval_id": eval_id,
+                "eval_prompt": eval_prompt,
+            })
 
-print(f"Loaded {len(rows)} eval sets across {len(set(r['category'] for r in rows))} categories.\n")
+# Deduplicate by (eval_prompt or eval_set, category) to avoid pseudo-replication
+n_before = len(rows)
+seen_keys = set()
+unique_rows = []
+for r in rows:
+    key = (r["eval_prompt"] or r["eval_set"], r["category"])
+    if key not in seen_keys:
+        seen_keys.add(key)
+        unique_rows.append(r)
+rows = unique_rows
+print(f"Loaded {n_before} rows, deduplicated to {len(rows)} unique (prompt, category) pairs "
+      f"across {len(set(r['category'] for r in rows))} categories.\n")
 
-descriptions = [r["eval_set"] for r in rows]
 categories   = [r["category"] for r in rows]
+subcategories = [r["subcategory"] for r in rows]
+descriptions = [r["eval_prompt"] if r["eval_prompt"] else r["eval_set"] for r in rows]
+prompt_previews = [truncate_text(p, limit=120) for p in descriptions]
+embedding_texts = [
+    f"Category: {cat}\nPrompt: {prompt}"
+    for cat, prompt in zip(categories, descriptions)
+]
+fallback_count = sum(1 for r in rows if not r["eval_prompt"])
+print(
+    "Embedding text source: category + eval_prompt "
+    f"(fallback to eval_set for {fallback_count} rows).\n"
+)
 
 # ── Embeddings (semantic with robust fallback) ───────────────────────────
 embedding_source = "Sentence Embeddings (all-mpnet-base-v2)"
 try:
     print("Loading sentence-transformers model (all-mpnet-base-v2)...")
     model = SentenceTransformer("all-mpnet-base-v2")
-    embeddings = model.encode(descriptions, show_progress_bar=True, normalize_embeddings=True)
+    embeddings = model.encode(embedding_texts, show_progress_bar=True, normalize_embeddings=True)
 except Exception as exc:
     print(f"Could not load semantic model, falling back to TF-IDF embeddings: {exc}")
     vectorizer = TfidfVectorizer(
@@ -62,7 +110,13 @@ except Exception as exc:
         max_features=500,
         min_df=1,
     )
-    embeddings = vectorizer.fit_transform(descriptions).toarray()
+    embeddings = vectorizer.fit_transform(embedding_texts).toarray()
+    # Guard against zero vectors that cause non-finite cosine distances
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    zero_mask = norms.squeeze() == 0
+    if zero_mask.any():
+        embeddings[zero_mask] += 1e-10
+        print(f"  Warning: {zero_mask.sum()} zero vectors patched with epsilon")
     embedding_source = "TF-IDF Fallback"
 
 print(f"Embedding matrix shape: {embeddings.shape}")
@@ -74,7 +128,24 @@ cos_sim = cosine_similarity(embeddings)
 # ── Hierarchical clustering ──────────────────────────────────────────────
 condensed_dist = pdist(embeddings, metric="cosine")
 condensed_dist = np.clip(condensed_dist, 0, None)
-Z = linkage(condensed_dist, method="ward")
+condensed_dist = np.nan_to_num(condensed_dist, nan=1.0, posinf=1.0)  # guard non-finite values
+Z = linkage(condensed_dist, method="average")  # average linkage is valid with cosine distances (ward requires Euclidean)
+
+# ── Silhouette score (cluster quality metric) ───────────────────────────
+from sklearn.metrics import silhouette_score
+try:
+    sil_score = silhouette_score(embeddings, categories, metric="cosine")
+    print(f"Silhouette score (cosine): {sil_score:.4f}")
+    if sil_score < 0.25:
+        print("  → Weak separation: categories overlap significantly in embedding space.")
+    elif sil_score < 0.50:
+        print("  → Moderate separation: some category overlap.")
+    else:
+        print("  → Good separation: categories are well-differentiated.")
+    print()
+except Exception as e:
+    sil_score = None
+    print(f"Could not compute silhouette score: {e}\n")
 
 # ── t-SNE for 2D projection ─────────────────────────────────────────────
 perplexity = min(30, len(descriptions) - 1)
@@ -91,7 +162,8 @@ coords_2d = tsne.fit_transform(embeddings)
 # ── Color map ─────────────────────────────────────────────────────────────
 unique_cats = sorted(set(categories))
 cat_to_idx = {c: i for i, c in enumerate(unique_cats)}
-cmap = plt.colormaps.get_cmap("tab20").resampled(len(unique_cats))
+cat_palette = (CATEGORY_PALETTE * ((len(unique_cats) + len(CATEGORY_PALETTE) - 1) // len(CATEGORY_PALETTE)))[:len(unique_cats)]
+cmap = ListedColormap(cat_palette)
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  PLOT 1: t-SNE scatter — convex hulls + centroid labels
@@ -191,7 +263,7 @@ if px is not None:
         {
             "tsne_x": coords_2d[:, 0],
             "tsne_y": coords_2d[:, 1],
-            "eval_set": descriptions,
+            "prompt_preview": prompt_previews,
             "category": categories,
             "category_count": [cat_counts[c] for c in categories],
         }
@@ -203,7 +275,7 @@ if px is not None:
         y="tsne_y",
         color="category",
         color_discrete_map=category_colors,
-        hover_name="eval_set",
+        hover_name="prompt_preview",
         hover_data={
             "category": True,
             "category_count": True,
@@ -253,7 +325,7 @@ dn = dendrogram(
     color_threshold=0.7 * max(Z[:, 2]),
 )
 ax.set_title("Eval Categories — Semantic Hierarchical Clustering", fontsize=16, fontweight="bold")
-ax.set_ylabel("Ward Distance (cosine)")
+ax.set_ylabel("Average Linkage Distance (cosine)")
 plt.tight_layout()
 fig.savefig("eval_semantic_dendrogram.png", dpi=200, bbox_inches="tight")
 print("Saved: eval_semantic_dendrogram.png")
@@ -280,10 +352,10 @@ df_sim = pd.DataFrame(cat_sim, index=unique_cats, columns=unique_cats)
 
 g = sns.clustermap(
     df_sim,
-    method="ward",
-    metric="euclidean",
-    cmap="YlOrRd",
-    vmin=0,
+    method="average",   # average linkage is valid with cosine (ward requires Euclidean)
+    metric="cosine",
+    cmap="crest",
+    vmin=df_sim.values.min(),  # allow negative cosine similarities
     vmax=df_sim.values.max(),
     annot=True,
     fmt=".3f",
@@ -309,7 +381,7 @@ if px is not None:
     from scipy.cluster.hierarchy import leaves_list
 
     # Reorder rows/cols by dendrogram leaf order (same as seaborn clustermap)
-    row_linkage = linkage(pdist(df_sim.values, metric="euclidean"), method="ward")
+    row_linkage = linkage(pdist(df_sim.values, metric="cosine"), method="average")
     leaf_order = leaves_list(row_linkage)
     ordered_cats = [unique_cats[i] for i in leaf_order]
     df_ordered = df_sim.loc[ordered_cats, ordered_cats]
@@ -330,8 +402,8 @@ if px is not None:
         z=df_ordered.values,
         x=ordered_cats,
         y=ordered_cats,
-        colorscale="YlOrRd",
-        zmin=0,
+        colorscale="YlGnBu",
+        zmin=float(df_ordered.values.min()),  # allow negative cosine similarities
         zmax=float(df_ordered.values.max()),
         text=[[f"{v:.3f}" for v in row] for row in df_ordered.values],
         texttemplate="%{text}",
@@ -391,28 +463,37 @@ if px is not None:
 
     # ── PLOT G1: Coverage Density Cluster Map ─────────────────────────────
     # KDE contour over t-SNE with scatter overlay. Cold zones = gaps.
-    kde = gaussian_kde(coords_2d.T, bw_method=0.3)
-    pad = 5
-    xgrid = np.linspace(coords_2d[:, 0].min() - pad, coords_2d[:, 0].max() + pad, 200)
-    ygrid = np.linspace(coords_2d[:, 1].min() - pad, coords_2d[:, 1].max() + pad, 200)
-    Xg, Yg = np.meshgrid(xgrid, ygrid)
-    Zg = kde(np.vstack([Xg.ravel(), Yg.ravel()])).reshape(Xg.shape)
-
     fig_density = go.Figure()
+    kde_ok = False
+    try:
+        kde = gaussian_kde(coords_2d.T)  # Scott's rule (data-driven bandwidth)
+        pad = 5
+        xgrid = np.linspace(coords_2d[:, 0].min() - pad, coords_2d[:, 0].max() + pad, 200)
+        ygrid = np.linspace(coords_2d[:, 1].min() - pad, coords_2d[:, 1].max() + pad, 200)
+        Xg, Yg = np.meshgrid(xgrid, ygrid)
+        Zg = kde(np.vstack([Xg.ravel(), Yg.ravel()])).reshape(Xg.shape)
+        kde_ok = True
+    except Exception as e:
+        print(f"  Warning: KDE failed ({e}), skipping contour layer")
+        pad = 5
+        xgrid = np.linspace(coords_2d[:, 0].min() - pad, coords_2d[:, 0].max() + pad, 200)
+        ygrid = np.linspace(coords_2d[:, 1].min() - pad, coords_2d[:, 1].max() + pad, 200)
+        Xg, Yg = np.meshgrid(xgrid, ygrid)
 
     # Contour background (reversed so low density = warm/visible)
-    fig_density.add_trace(go.Contour(
-        x=xgrid, y=ygrid, z=Zg,
-        colorscale="YlOrRd",
-        reversescale=False,
-        opacity=0.6,
-        contours=dict(showlabels=False),
-        colorbar=dict(title=dict(text="Density", side="right"),
-                      x=-0.08, len=0.5, y=0.5),
-        hoverinfo="skip",
-        name="Density",
-        showlegend=False,
-    ))
+    if kde_ok:
+        fig_density.add_trace(go.Contour(
+            x=xgrid, y=ygrid, z=Zg,
+            colorscale="YlGnBu",
+            reversescale=False,
+            opacity=0.6,
+            contours=dict(showlabels=False),
+            colorbar=dict(title=dict(text="Density", side="right"),
+                          x=-0.08, len=0.5, y=0.5),
+            hoverinfo="skip",
+            name="Density",
+            showlegend=False,
+        ))
 
     # Scatter points by category
     for cat in unique_cats:
@@ -424,13 +505,15 @@ if px is not None:
             name=f"{cat} ({len(mask)})",
             marker=dict(size=8, color=category_colors[cat],
                         line=dict(width=0.5, color="white")),
-            text=[descriptions[i] for i in mask],
-            hovertemplate="<b>%{text}</b><br>Category: " + cat + "<extra></extra>",
+            text=[prompt_previews[i] for i in mask],
+            hovertemplate="Category: " + cat + "<br>Prompt: %{text}<extra></extra>",
         ))
 
     # Find sparse zones inside the data hull and mark them with gap markers
     from scipy.spatial import Delaunay
     try:
+        if not kde_ok:
+            raise RuntimeError("KDE not available")
         hull = Delaunay(coords_2d)
         grid_pts = np.column_stack([Xg.ravel(), Yg.ravel()])
         inside = hull.find_simplex(grid_pts) >= 0
@@ -464,7 +547,7 @@ if px is not None:
             nearest_3 = np.argsort(dists_to_pts)[:3]
             neighbor_cats = set(categories[n] for n in nearest_3)
             neighbor_lines = "<br>".join(
-                f"• [{categories[n]}] {descriptions[n][:60]}" for n in nearest_3
+                f"• [{categories[n]}] {prompt_previews[n]}" for n in nearest_3
             )
             hover = (
                 f"<b>SPARSE ZONE</b><br>"
@@ -491,6 +574,41 @@ if px is not None:
     except Exception:
         pass
 
+    # Density hover grid: invisible scatter showing top-3 nearest categories
+    grid_n = 20
+    hx = np.linspace(coords_2d[:, 0].min() - 2, coords_2d[:, 0].max() + 2, grid_n)
+    hy = np.linspace(coords_2d[:, 1].min() - 2, coords_2d[:, 1].max() + 2, grid_n)
+    hXg, hYg = np.meshgrid(hx, hy)
+    hover_pts = np.column_stack([hXg.ravel(), hYg.ravel()])
+
+    hover_texts = []
+    hover_xs, hover_ys = [], []
+    for pt in hover_pts:
+        dists_to_eval = np.linalg.norm(coords_2d - pt, axis=1)
+        nearest_k = min(10, len(categories))
+        nearest_idxs = np.argsort(dists_to_eval)[:nearest_k]
+        # Count category frequencies among nearest neighbors
+        cat_freq = Counter(categories[ni] for ni in nearest_idxs)
+        top3_cats = cat_freq.most_common(3)
+        top3_text = "<br>".join(
+            f"  {cnt}/{nearest_k} — {cat}" for cat, cnt in top3_cats
+        )
+        hover_texts.append(
+            f"<b>Neighborhood categories:</b><br>{top3_text}"
+        )
+        hover_xs.append(pt[0])
+        hover_ys.append(pt[1])
+
+    fig_density.add_trace(go.Scatter(
+        x=hover_xs, y=hover_ys,
+        mode="markers",
+        marker=dict(size=18, color="rgba(0,0,0,0)", line=dict(width=0)),
+        text=hover_texts,
+        hovertemplate="%{text}<extra></extra>",
+        showlegend=False,
+        name="",
+    ))
+
     fig_density.update_layout(
         title="Coverage Density Cluster Map — Cold Zones = Gaps",
         width=1500, height=950,
@@ -508,10 +626,17 @@ if px is not None:
 
     # ── PLOT G2: Boundary Gap Cluster Map ─────────────────────────────────
     # Midpoints between category centroids, sized by gap distance.
+    # t-SNE centroids (for plot positions only)
     centroids = {}
     for cat in unique_cats:
         mask = [i for i, c in enumerate(categories) if c == cat]
         centroids[cat] = coords_2d[mask].mean(axis=0)
+
+    # Embedding-space centroids (for metric-faithful gap computation)
+    emb_centroids = {}
+    for cat in unique_cats:
+        mask = [i for i, c in enumerate(categories) if c == cat]
+        emb_centroids[cat] = embeddings[mask].mean(axis=0)
 
     fig_boundary = go.Figure()
 
@@ -524,34 +649,39 @@ if px is not None:
             name=f"{cat} ({len(mask)})",
             marker=dict(size=7, color=category_colors[cat], opacity=0.5,
                         line=dict(width=0.3, color="white")),
-            text=[descriptions[i] for i in mask],
-            hovertemplate="<b>%{text}</b><br>Category: " + cat + "<extra></extra>",
+            text=[prompt_previews[i] for i in mask],
+            hovertemplate="Category: " + cat + "<br>Prompt: %{text}<extra></extra>",
         ))
 
-    # Compute gap midpoints
+    # Compute gap midpoints — gap_size uses cosine distance in embedding space
     gap_data = []
     for (cat_a, ca), (cat_b, cb) in itertools.combinations(centroids.items(), 2):
-        midpoint = (ca + cb) / 2
-        dists = np.linalg.norm(coords_2d - midpoint, axis=1)
-        gap_size = float(dists.min())
-        nearest_idx = int(dists.argmin())
-        # Also find nearest from each category
+        midpoint_tsne = (ca + cb) / 2  # t-SNE midpoint for plot position
+        midpoint_emb = (emb_centroids[cat_a] + emb_centroids[cat_b]) / 2  # embedding midpoint
+        # Cosine distance from midpoint to nearest eval point in embedding space
+        mid_norm = np.linalg.norm(midpoint_emb)
+        if mid_norm > 0:
+            cos_dists = 1 - (embeddings @ midpoint_emb) / (
+                np.linalg.norm(embeddings, axis=1) * mid_norm
+            )
+        else:
+            cos_dists = np.ones(len(embeddings))
+        gap_size = float(cos_dists.min())
+        # Find nearest from each category in embedding space
         mask_a = [i for i, c in enumerate(categories) if c == cat_a]
         mask_b = [i for i, c in enumerate(categories) if c == cat_b]
-        dist_a = np.linalg.norm(coords_2d[mask_a] - midpoint, axis=1)
-        dist_b = np.linalg.norm(coords_2d[mask_b] - midpoint, axis=1)
-        nearest_a = descriptions[mask_a[dist_a.argmin()]]
-        nearest_b = descriptions[mask_b[dist_b.argmin()]]
+        nearest_a = prompt_previews[mask_a[int(cos_dists[mask_a].argmin())]]
+        nearest_b = prompt_previews[mask_b[int(cos_dists[mask_b].argmin())]]
         gap_data.append({
-            "x": midpoint[0], "y": midpoint[1],
+            "x": midpoint_tsne[0], "y": midpoint_tsne[1],
             "gap_size": gap_size,
             "cat_a": cat_a, "cat_b": cat_b,
-            "nearest_a": nearest_a[:80], "nearest_b": nearest_b[:80],
+            "nearest_a": nearest_a, "nearest_b": nearest_b,
         })
 
     gap_data.sort(key=lambda g: g["gap_size"], reverse=True)
     # Show top 25 largest gaps
-    top_gaps = gap_data[:25]
+    top_gaps = gap_data[:min(25, len(gap_data))]
 
     gap_sizes = [g["gap_size"] for g in top_gaps]
     max_gap = max(gap_sizes) if gap_sizes else 1
@@ -565,10 +695,10 @@ if px is not None:
         marker=dict(
             size=[8 + 25 * (g["gap_size"] - min_gap) / (max_gap - min_gap + 1e-9) for g in top_gaps],
             color=[g["gap_size"] for g in top_gaps],
-            colorscale="RdYlGn_r",
+            colorscale="PuBu",
             symbol="diamond",
             line=dict(width=1, color="black"),
-            colorbar=dict(title=dict(text="Gap Size", side="right"), x=1.08),
+            colorbar=dict(title=dict(text="Gap Size<br>(cosine dist)", side="right"), x=1.08),
         ),
         text=[f"Gap between:<br><b>{g['cat_a']}</b> and <b>{g['cat_b']}</b><br>"
               f"Gap size: {g['gap_size']:.2f}<br><br>"
@@ -580,9 +710,11 @@ if px is not None:
 
     fig_boundary.update_layout(
         title="Boundary Gap Cluster Map — Large Diamonds = Missing Coverage Between Categories",
-        width=1400, height=950,
+        width=1500, height=950,
         template="plotly_white",
-        legend=dict(title="Category (count)", font=dict(size=9)),
+        legend=dict(title="Category (count)", font=dict(size=9),
+                    x=1.12, y=1, xanchor="left"),
+        margin=dict(l=50, r=200, t=80, b=50),
     )
     fig_boundary.update_xaxes(visible=False)
     fig_boundary.update_yaxes(visible=False, scaleanchor="x")
@@ -660,13 +792,15 @@ if px is not None:
 
     # Category points
     for s in cat_stats:
+        label = s["category"] + (" *" if s["count"] < 3 else "")
+        small_note = "<br><i>(N&lt;3, breadth unreliable)</i>" if s["count"] < 3 else ""
         fig_quad.add_trace(go.Scatter(
             x=[s["count"]], y=[s["breadth"]],
             mode="markers+text",
             name=s["category"],
             marker=dict(size=14 + s["centrality"] * 60, color=s["color"],
                         line=dict(width=1, color="white")),
-            text=[s["category"]],
+            text=[label],
             textposition="top center",
             textfont=dict(size=9),
             hovertemplate=(
@@ -674,6 +808,7 @@ if px is not None:
                 f"Eval count: {s['count']}<br>"
                 f"Semantic breadth: {s['breadth']:.3f}<br>"
                 f"Cross-category centrality: {s['centrality']:.3f}"
+                f"{small_note}"
                 "<extra></extra>"
             ),
         ))
@@ -717,8 +852,8 @@ if px is not None:
         coherence_data.append({
             "category": cat, "count": len(idxs),
             "min_sim": float(min_s), "mean_sim": float(np.mean(sims)), "max_sim": float(max_s),
-            "min_pair": (descriptions[min_a][:70], descriptions[min_b][:70]),
-            "max_pair": (descriptions[max_a][:70], descriptions[max_b][:70]),
+            "min_pair": (prompt_previews[min_a], prompt_previews[min_b]),
+            "max_pair": (prompt_previews[max_a], prompt_previews[max_b]),
         })
 
     coherence_data.sort(key=lambda x: x["mean_sim"])
@@ -780,6 +915,15 @@ if px is not None:
                 "<extra></extra>"
             ),
         ))
+        # Annotate small-sample categories as unreliable
+        if d["count"] < 3:
+            fig_dumbbell.add_annotation(
+                x=d["mean_sim"], y=i,
+                text="N<3 (unreliable)",
+                showarrow=True, arrowhead=0, ax=60, ay=0,
+                font=dict(size=8, color="#c62828"),
+                bgcolor="rgba(255,255,255,0.8)",
+            )
 
     fig_dumbbell.update_layout(
         title="Category Coherence — Wide Spread = Incoherent (Consider Splitting)",
@@ -787,7 +931,10 @@ if px is not None:
         yaxis=dict(
             tickmode="array",
             tickvals=list(range(len(coherence_data))),
-            ticktext=[f"{d['category']} ({d['count']})" for d in coherence_data],
+            ticktext=[
+                f"{d['category']} ({d['count']})" + (" *" if d["count"] < 3 else "")
+                for d in coherence_data
+            ],
             tickfont=dict(size=9),
         ),
         width=1200, height=700,
@@ -803,41 +950,58 @@ if px is not None:
     fig_network = go.Figure()
 
     # Edges (draw first so they appear behind nodes)
-    threshold = 0.20
+    pair_sims = []
     for i in range(len(unique_cats)):
         for j in range(i + 1, len(unique_cats)):
-            sim = cat_sim[i, j]
-            if sim >= threshold:
-                ca = centroids[unique_cats[i]]
-                cb = centroids[unique_cats[j]]
-                # Find the most similar cross-category pair for hover
-                idxs_a = [k for k, c in enumerate(categories) if c == unique_cats[i]]
-                idxs_b = [k for k, c in enumerate(categories) if c == unique_cats[j]]
-                best_sim, best_a, best_b = 0, 0, 0
-                for a in idxs_a:
-                    for b in idxs_b:
-                        if cos_sim[a, b] > best_sim:
-                            best_sim = cos_sim[a, b]
-                            best_a, best_b = a, b
+            pair_sims.append((float(cat_sim[i, j]), i, j))
+    pair_sims.sort(key=lambda x: x[0], reverse=True)
 
-                opacity = min(1.0, 0.3 + (sim - threshold) * 3)
-                width = 1 + (sim - threshold) * 20
-                color = f"rgba(211,47,47,{opacity})" if sim > 0.35 else \
-                        f"rgba(255,152,0,{opacity})" if sim > 0.25 else \
-                        f"rgba(150,150,150,{opacity})"
+    # Data-driven threshold: 75th percentile of cross-category similarities
+    all_cross_sims = [s for s, _, _ in pair_sims]
+    if all_cross_sims:
+        p75_threshold = float(np.percentile(all_cross_sims, 75))
+        selected_pairs = [(s, i, j) for s, i, j in pair_sims if s >= p75_threshold]
+        if not selected_pairs:
+            selected_pairs = pair_sims[:max(3, len(pair_sims) // 4)]
+    else:
+        selected_pairs = []
+    threshold = selected_pairs[-1][0] if selected_pairs else 1.0
 
-                fig_network.add_trace(go.Scatter(
-                    x=[ca[0], cb[0]], y=[ca[1], cb[1]],
-                    mode="lines",
-                    line=dict(width=width, color=color),
-                    showlegend=False,
-                    hoverinfo="text",
-                    text=f"<b>{unique_cats[i]}</b> ↔ <b>{unique_cats[j]}</b><br>"
-                         f"Avg similarity: {sim:.3f}<br><br>"
-                         f"Most similar pair ({best_sim:.3f}):<br>"
-                         f"• {descriptions[best_a][:70]}<br>"
-                         f"• {descriptions[best_b][:70]}",
-                ))
+    selected_vals = [s for s, _, _ in selected_pairs]
+    sel_min = min(selected_vals) if selected_vals else 0.0
+    sel_max = max(selected_vals) if selected_vals else 1.0
+    sel_span = max(sel_max - sel_min, 1e-9)
+
+    for sim, i, j in selected_pairs:
+        ca = centroids[unique_cats[i]]
+        cb = centroids[unique_cats[j]]
+        # Find the most similar cross-category pair for hover
+        idxs_a = [k for k, c in enumerate(categories) if c == unique_cats[i]]
+        idxs_b = [k for k, c in enumerate(categories) if c == unique_cats[j]]
+        best_sim, best_a, best_b = 0, 0, 0
+        for a in idxs_a:
+            for b in idxs_b:
+                if cos_sim[a, b] > best_sim:
+                    best_sim = cos_sim[a, b]
+                    best_a, best_b = a, b
+
+        strength = (sim - sel_min) / sel_span
+        opacity = 0.25 + 0.70 * strength
+        width = 1.5 + 4.5 * strength
+        color = f"rgba(42, 157, 143, {opacity})"
+
+        fig_network.add_trace(go.Scatter(
+            x=[ca[0], cb[0]], y=[ca[1], cb[1]],
+            mode="lines",
+            line=dict(width=width, color=color),
+            showlegend=False,
+            hoverinfo="text",
+            text=f"<b>{unique_cats[i]}</b> ↔ <b>{unique_cats[j]}</b><br>"
+                 f"Avg similarity: {sim:.3f}<br><br>"
+                 f"Most similar pair ({best_sim:.3f}):<br>"
+                 f"• [{categories[best_a]}] {prompt_previews[best_a]}<br>"
+                 f"• [{categories[best_b]}] {prompt_previews[best_b]}",
+        ))
 
     # Nodes
     for cat in unique_cats:
@@ -864,7 +1028,10 @@ if px is not None:
         ))
 
     fig_network.update_layout(
-        title=f"Category Redundancy Network — Edges Where Avg Similarity > {threshold}",
+        title=(
+            "Category Redundancy Network — "
+            f"Top {len(selected_pairs)} Cross-Category Links (min similarity {threshold:.3f})"
+        ),
         width=1400, height=950,
         template="plotly_white",
         showlegend=False,
@@ -893,13 +1060,14 @@ if px is not None:
 
         isolation_data.append({
             "desc": descriptions[i],
+            "desc_preview": prompt_previews[i],
             "category": categories[i],
             "isolation": isolation,
-            "top3": [(float(s), descriptions[j], categories[j]) for s, j in top3],
+            "top3": [(float(s), prompt_previews[j], categories[j]) for s, j in top3],
         })
 
     isolation_data.sort(key=lambda x: x["isolation"], reverse=True)
-    top_n = 30
+    top_n = min(30, max(5, len(descriptions) // 4))
     top_isolated = isolation_data[:top_n]
 
     fig_lollipop = go.Figure()
@@ -916,7 +1084,7 @@ if px is not None:
         ))
         # Dot
         neighbors_text = "<br>".join([
-            f"  {s:.3f} [{c}] {desc[:60]}" for s, desc, c in d["top3"]
+            f"  {s:.3f} [{c}] {desc}" for s, desc, c in d["top3"]
         ])
         fig_lollipop.add_trace(go.Scatter(
             x=[d["isolation"]], y=[i],
@@ -924,8 +1092,8 @@ if px is not None:
             marker=dict(size=10, color=color, line=dict(width=1, color="black")),
             showlegend=False,
             hovertemplate=(
-                f"<b>{d['desc'][:80]}</b><br>"
                 f"Category: {d['category']}<br>"
+                f"Prompt: {d['desc_preview']}<br>"
                 f"Isolation score: {d['isolation']:.3f}<br><br>"
                 f"Top-3 nearest neighbors (any category):<br>"
                 f"{neighbors_text}"
@@ -939,7 +1107,7 @@ if px is not None:
         yaxis=dict(
             tickmode="array",
             tickvals=list(range(len(top_isolated))),
-            ticktext=[f"[{d['category'][:20]}] {d['desc'][:55]}" for d in top_isolated],
+            ticktext=[f"[{d['category'][:20]}] {d['desc_preview'][:55]}" for d in top_isolated],
             tickfont=dict(size=7),
             autorange="reversed",
         ),
@@ -971,7 +1139,7 @@ for cat, cnt in sorted(cat_counts.items(), key=lambda x: x[1]):
 avg_sim_per_item = []
 for i in range(len(descriptions)):
     others = [cos_sim[i, j] for j in range(len(descriptions)) if j != i]
-    avg_sim_per_item.append((np.mean(others), descriptions[i], categories[i]))
+    avg_sim_per_item.append((np.mean(others), prompt_previews[i], categories[i]))
 
 avg_sim_per_item.sort()
 print("\nMost semantically isolated eval sets (lowest avg cosine sim to all others):")
@@ -994,8 +1162,8 @@ for sim, i, j in pairs:
     if key not in seen:
         seen.add(key)
         same_cat = "SAME" if categories[i] == categories[j] else "DIFF"
-        print(f"   {sim:.4f} [{same_cat}]  [{categories[i]}] {descriptions[i][:65]}")
-        print(f"                  [{categories[j]}] {descriptions[j][:65]}")
+        print(f"   {sim:.4f} [{same_cat}]  [{categories[i]}] {prompt_previews[i]}")
+        print(f"                  [{categories[j]}] {prompt_previews[j]}")
         print()
         count += 1
 
@@ -1018,8 +1186,8 @@ for i in range(len(descriptions)):
             cross_item_pairs.append((cos_sim[i, j], i, j))
 cross_item_pairs.sort(reverse=True)
 for sim, i, j in cross_item_pairs[:15]:
-    print(f"   {sim:.4f}  [{categories[i]}] {descriptions[i][:65]}")
-    print(f"           [{categories[j]}] {descriptions[j][:65]}")
+    print(f"   {sim:.4f}  [{categories[i]}] {prompt_previews[i]}")
+    print(f"           [{categories[j]}] {prompt_previews[j]}")
     print()
 
 # Items that are in the SAME category but semantically distant
@@ -1031,8 +1199,8 @@ for i in range(len(descriptions)):
             intra_pairs.append((cos_sim[i, j], i, j))
 intra_pairs.sort()
 for sim, i, j in intra_pairs[:15]:
-    print(f"   {sim:.4f}  [{categories[i]}] {descriptions[i][:65]}")
-    print(f"           [{categories[j]}] {descriptions[j][:65]}")
+    print(f"   {sim:.4f}  [{categories[i]}] {prompt_previews[i]}")
+    print(f"           [{categories[j]}] {prompt_previews[j]}")
     print()
 
 # Sparse regions in semantic space
@@ -1042,7 +1210,7 @@ median_dist = np.median(dists_2d[np.triu_indices_from(dists_2d, k=1)])
 densities = [(np.sum(dists_2d[i] < median_dist), i) for i in range(len(descriptions))]
 densities.sort()
 for density, idx in densities[:10]:
-    print(f"   density={density:3d}  [{categories[idx]}]  {descriptions[idx][:80]}")
+    print(f"   density={density:3d}  [{categories[idx]}]  {prompt_previews[idx]}")
 
 print(f"\n{'=' * 80}")
 print("Done. Check eval_semantic_*.png files.")
