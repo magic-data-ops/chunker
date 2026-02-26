@@ -1,0 +1,248 @@
+categories:
+  - name: cross_context_synthesis
+    display_name: "Successfully synthesizes across long context within a multi-source legal corpus"
+    description: >
+      Questions requiring the model to synthesize information from multiple
+      widely separated documents of different types — court opinions, briefs,
+      legislative materials, and secondary sources — within the legal casebook
+      corpus to produce a coherent, unified answer that no single document
+      could provide alone. The model must navigate across document types
+      (e.g., combining a court opinion's holding with a law review article's
+      analysis and a statutory text's provisions).
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      Early turns ask about individual documents in isolation — a specific court
+      opinion, a statutory provision, or a law review analysis. The conversation
+      builds up separate pieces of information from different document types
+      and jurisdictions. The final evaluation question asks the model to
+      synthesize these separate pieces into a unified answer that spans multiple
+      document types and no single document could provide alone.
+
+  - name: long_context_citation
+    display_name: "Retrieves information in a long context source and correctly cites its source"
+    description: >
+      Questions testing whether the model can locate a specific piece of
+      information within the large legal casebook corpus and accurately cite
+      its source — including case name, court, year, volume and page number
+      for opinions; statute code and section number for legislative materials;
+      or author and title for secondary sources.
+    min_hops: 1
+    max_hops: 5
+    domain_scope: legal_casebook_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      Early turns ask about content near the target passage, establishing
+      the general area of the corpus the user is interested in. The final
+      evaluation question requires precise citation of a specific document —
+      case name, court, date, statute code, or article title — from the
+      corpus.
+
+  - name: hierarchy_comprehension
+    display_name: "Ability to comprehend the hierarchy structure of a long text source"
+    description: >
+      Questions that require understanding the hierarchical organization across
+      different document types — e.g., distinguishing majority opinions from
+      dissents, statutory text from committee reports interpreting that text,
+      treatise black-letter law from commentary, nested statutory subsections,
+      or the authority hierarchy between Supreme Court opinions and circuit
+      court opinions on the same issue.
+    min_hops: 1
+    max_hops: 8
+    domain_scope: legal_casebook_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      Early turns establish the structural context — discussing one level of
+      a legal hierarchy (e.g., a statutory provision). The final evaluation
+      question asks the model to distinguish or relate different structural
+      levels across document types (e.g., statute vs. committee report vs.
+      regulatory guidance, or majority opinion vs. dissent, or treatise
+      section vs. subsection).
+
+  - name: entity_state_tracking
+    display_name: "Tracks entity state changes across long, interleaved histories"
+    description: >
+      Questions requiring the model to track how a legal entity (party, statute,
+      legal standard, or procedural posture) changes state across multiple
+      interleaved documents — e.g., a party's legal status through successive
+      proceedings documented in opinions and briefs, a statute's evolution
+      through amendments referenced in legislative materials, or a legal
+      standard's development across circuit court opinions over time.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation tracks an entity across different time points and
+      document types. Early turns ask about the entity's initial state from
+      an earlier case or legislative document. Middle turns ask about
+      intermediate changes as reflected in briefs, orders, or amendments.
+      The final evaluation question requires the model to describe the full
+      state trajectory across all document types discussed.
+
+  - name: entity_disambiguation
+    display_name: "Disambiguates distinct entities with identical or near-identical names across context"
+    description: >
+      Questions requiring the reader to distinguish two or more entities sharing
+      the same or near-identical name across different documents, jurisdictions,
+      legal contexts, or time periods within the casebook — e.g., the same
+      statutory section number in different codes, parties with similar names
+      in different cases, or legal standards with the same label applied
+      differently across jurisdictions.
+    min_hops: 1
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation history discusses one entity by name, establishing
+      facts about it from one document or jurisdiction. Then the conversation
+      naturally shifts to discuss a different entity sharing the same or
+      similar name but in a different jurisdiction, case, or document type.
+      The final evaluation question asks the model to clearly disambiguate
+      between the entities discussed throughout the conversation.
+
+  - name: multi_hop_reasoning
+    display_name: "Performs multi-hop reasoning across documents that are widely separated in context"
+    description: >
+      Questions whose complete answer requires synthesizing facts from two or
+      more non-adjacent documents that are widely separated in the corpus and
+      may be of different types. No single document is sufficient — the model
+      must chain reasoning across, e.g., a court opinion establishing a legal
+      standard, a brief applying it, and a legislative history explaining
+      its origins.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation establishes individual facts step by step from different
+      document types. Each turn explores a different piece of evidence from a
+      different part of the corpus (an opinion, a statute, a brief, or a
+      secondary source). The final evaluation question requires combining all
+      established facts through multi-hop reasoning to reach a conclusion
+      that no single document supports.
+
+  - name: semantic_deduplication
+    display_name: "Deduplicates semantically identical information expressed differently across multiple sources"
+    description: >
+      Questions testing whether the model can identify that two or more documents
+      of different types express the same legal principle, fact, or holding
+      using different wording — e.g., a court opinion stating a holding and a
+      practice guide restating it, or a statutory provision and a regulatory
+      guidance interpreting the same rule — and produce a deduplicated answer.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      An early turn presents information from one source (e.g., a court opinion)
+      using its original wording. The conversation then introduces the same
+      information from a different source type (e.g., a practice guide or
+      treatise) stated differently. The final evaluation question asks whether
+      these are the same or different principles, or asks the model to produce
+      a single deduplicated statement.
+
+  - name: temporal_ordering
+    display_name: "Reconstructs accurate temporal ordering from events scattered non-chronologically across context"
+    description: >
+      Questions requiring the model to reconstruct the correct chronological
+      sequence of events (case decisions, statute enactments, amendments,
+      regulatory actions) that appear out of order across different document
+      types in the corpus. The deliberate non-chronological interleaving of
+      the corpus makes this particularly challenging.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation presents legal events from the corpus in a
+      non-chronological order — mixing discussion of earlier and later cases,
+      statute enactments, and amendments across turns. The final evaluation
+      question asks the model to reconstruct the correct chronological
+      sequence from all events discussed in the conversation history.
+
+  - name: domain_scoping
+    display_name: "Correctly scopes information to its domain of applicability"
+    description: >
+      Questions testing whether the model correctly limits a legal principle,
+      statute, or ruling to its proper domain of applicability — e.g.,
+      distinguishing a 9th Circuit holding from a 5th Circuit holding on
+      the same issue, federal from state law, contract law principles from
+      employment law principles, or a court opinion's holding from
+      non-binding regulatory guidance on the same topic.
+    min_hops: 1
+    max_hops: 8
+    domain_scope: legal_casebook_corpus
+    num_turns: 3
+    multiturn_scenario: >
+      An early turn discusses a legal principle from one jurisdiction or
+      document type. The conversation then shifts to a different jurisdiction
+      or document type where a similar-sounding but legally distinct rule
+      applies. The final evaluation question tests whether the model correctly
+      scopes each principle to its proper domain rather than conflating them.
+
+  - name: source_prioritization
+    display_name: "Prioritizes information sources by recency, authority, or specificity when context contains superseded content"
+    description: >
+      Questions requiring the model to identify which of multiple conflicting
+      or overlapping sources takes precedence based on recency (later case
+      overruling earlier), authority (Supreme Court vs. circuit court, statute
+      vs. regulatory guidance), or specificity (narrow holding vs. broad
+      dictum, committee report vs. floor debate). The multi-source corpus
+      creates natural authority hierarchies across document types.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      Early turns present information from lower-priority sources (older cases,
+      lower courts, regulatory guidance, floor debate statements). Later turns
+      introduce higher-priority sources (newer cases, higher courts, statutory
+      text, Supreme Court opinions) that supersede or narrow the earlier
+      information. The final evaluation question asks which source takes
+      precedence and why.
+
+  - name: numerical_aggregation
+    display_name: "Performs basic mathematical operations (sums, averages, or counts) across all entities in a long context source"
+    description: >
+      Questions requiring the model to perform arithmetic — counting cases
+      across jurisdictions, summing damages from settlement agreements and
+      court orders, averaging time periods, computing statutory thresholds,
+      or tallying vote counts from opinions — across multiple documents
+      scattered throughout the corpus.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 4
+    multiturn_scenario: >
+      The conversation collects individual numerical facts across turns from
+      different document types. Each turn discusses a different data point
+      (a damages amount from an opinion, a settlement figure, a statutory
+      threshold, a vote count). The final evaluation question asks the model
+      to perform arithmetic across all numerical facts established in the
+      conversation.
+
+  - name: conflicting_information_synthesis
+    display_name: "Synthesizes large amounts of conflicting information presenting a balance of views across multiple viewpoints"
+    description: >
+      Questions requiring the model to identify and fairly present multiple
+      conflicting legal viewpoints across different document types — e.g.,
+      a plaintiff brief arguing one position while the defendant brief argues
+      the opposite, a circuit split analyzed in a law review article,
+      conflicting regulatory guidance and court interpretation, or floor
+      debate opponents presenting opposing views of a statute's purpose.
+    min_hops: 2
+    max_hops: 10
+    domain_scope: legal_casebook_corpus
+    num_turns: 5
+    multiturn_scenario: >
+      The conversation progressively presents conflicting viewpoints from
+      different document types. Early turns establish one legal position from
+      a court opinion or brief. Middle turns introduce contrasting positions
+      from other document types — opposing briefs, dissenting opinions,
+      conflicting circuit holdings, or floor debate opponents. The history
+      builds up multiple perspectives. The final evaluation question asks
+      the model to synthesize all conflicting viewpoints into a balanced
+      analysis.

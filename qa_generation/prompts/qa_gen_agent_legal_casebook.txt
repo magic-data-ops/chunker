@@ -1,0 +1,252 @@
+You are analyzing a legal casebook corpus to generate evaluation prompts for an
+LLM. Each evaluation prompt tests a single capability, denoted by its "category."
+
+DOMAIN CONSTRAINT: All questions, answers, and evidence MUST come exclusively
+from documents found in this corpus. Do not reference external information or
+content not present in the corpus files.
+
+CORPUS STRUCTURE: The legal casebook corpus contains multiple document types,
+interleaved by topic cluster in non-chronological order. Each document is
+separated by a header line:
+
+=== DOCUMENT N/TOTAL | TYPE: DOCUMENT_TYPE ===
+
+Document types include:
+- COURT_OPINION: Real court opinions from US Supreme Court, 9th Circuit, 5th
+  Circuit, New York Court of Appeals, and Texas Supreme Court. These contain
+  structured metadata (CASE_ID, CASE_NAME, COURT, DATE, CITATIONS, JUDGES).
+- PLAINTIFF_BRIEF / DEFENDANT_BRIEF: Litigation briefs arguing each side of a
+  case, citing supporting cases from the corpus.
+- MOTION_SUMMARY_JUDGMENT / MOTION_DISCOVERY: Procedural motions referencing
+  case facts and legal standards.
+- SETTLEMENT_AGREEMENT: Agreements with specific dollar amounts and terms.
+- COURT_ORDER: Procedural rulings referencing case timelines.
+- STATUTORY_TEXT: Full statutory sections with subsections and cross-references.
+- COMMITTEE_REPORT: Legislative committee analyses explaining statutory intent.
+- FLOOR_DEBATE: Congressional debate excerpts with conflicting viewpoints.
+- REGULATORY_GUIDANCE: Agency interpretations of statutes.
+- LAW_REVIEW_ARTICLE: Academic analyses of circuit splits and legal trends.
+- PRACTICE_GUIDE: Jurisdiction-by-jurisdiction summaries of legal holdings.
+- TREATISE_SECTION: Hierarchically organized legal treatise excerpts.
+
+Topics covered include contract law, employment law, environmental regulation,
+and intellectual property, drawn from 5 jurisdictions spanning 1950-2025.
+
+You are operating inside the corpus directory. Available files:
+{{FILE_LIST}}
+
+---
+
+CATEGORY: {{CATEGORY_NAME}}
+CAPABILITY BEING EVALUATED: {{CATEGORY_DESCRIPTION}}
+
+---
+
+SEED CONTEXT (starting point — use this to orient your search):
+{{SEED_CONTEXT}}
+
+---
+
+Your task: look at the source material and find relevant content to create exactly
+{{N_PAIRS}} evaluation prompt(s) that test the "{{CATEGORY_NAME}}" capability.
+For each prompt, you must also provide the golden response (the ideal answer an LLM
+should produce).
+
+SEARCH STRATEGY:
+
+1. Start from the seed context above. Identify key case names, statute codes, party
+   names, or legal concepts.
+2. Use Glob to discover available .txt files if needed.
+3. Use Grep with specific multi-word phrases (2–4 words) to find relevant passages. Examples:
+   - Grep for "Smith v. Jones" — good (specific case name)
+   - Grep for "court" — bad (too generic, overwhelming results)
+   - Grep for "42 USC 1983" — good (specific statute)
+   - Grep for "section" — bad (too broad)
+   - Grep for "TYPE: PLAINTIFF_BRIEF" — good (find specific document types)
+   - Grep for "TYPE: LAW_REVIEW_ARTICLE" — good (find secondary sources)
+4. Use Read to gather full context around matches. Read enough surrounding lines
+   (typically 30–100 lines around a hit) to fully understand the passage.
+5. CROSS-DOCUMENT-TYPE SEARCH: For most categories, deliberately search across
+   multiple document types. The strongest evaluation questions span different
+   document types. For example:
+   - Find a COURT_OPINION and a related PLAINTIFF_BRIEF or DEFENDANT_BRIEF
+   - Find a STATUTORY_TEXT and a REGULATORY_GUIDANCE interpreting it differently
+   - Find a LAW_REVIEW_ARTICLE analyzing a circuit split visible in two COURT_OPINIONs
+6. Category-specific search guidance:
+   - For cross_context_synthesis: Find documents of 3+ different types on the same legal
+     topic that must be combined for a complete understanding.
+   - For long_context_citation: Find a specific fact and verify the exact case name, court,
+     date, statute code, or article title from the corpus text.
+   - For hierarchy_comprehension: Find documents showing structural relationships across
+     types — statute vs. committee report, majority vs. dissent, treatise section vs.
+     subsection numbering.
+   - For entity_state_tracking: Find an entity (party, statute, legal standard) that
+     appears across multiple documents showing evolution over time.
+   - For entity_disambiguation: Search for a name or term that appears in two or more
+     clearly different contexts — different jurisdictions, different document types,
+     different legal areas.
+   - For multi_hop_reasoning: Chain facts across 2+ document types — e.g., an opinion
+     establishing a standard, a brief applying it, and a statute defining it.
+   - For semantic_deduplication: Find the same legal principle stated differently in
+     a court opinion and a practice guide or treatise.
+   - For temporal_ordering: Find events (decisions, enactments, amendments) that appear
+     out of chronological order across different documents.
+   - For domain_scoping: Find a legal principle from one jurisdiction/document type and
+     a similar-sounding but distinct rule from another jurisdiction/document type.
+   - For source_prioritization: Find conflicting sources where one supersedes another
+     by authority (Supreme Court > circuit court > regulatory guidance) or recency.
+   - For numerical_aggregation: Find numerical facts (damages, settlements, statutory
+     thresholds, vote counts) scattered across different document types.
+   - For conflicting_information_synthesis: Find opposing viewpoints — plaintiff vs.
+     defendant briefs, majority vs. dissent, floor debate proponents vs. opponents,
+     or conflicting circuit holdings analyzed in a law review article.
+
+PARALLEL SEARCH WITH SUBAGENTS — STRONGLY RECOMMENDED:
+You have access to the Task tool which spawns Explore subagents. These subagents run
+in parallel, each with their own context window, allowing you to search far more of
+the corpus than you could alone. USE THEM AGGRESSIVELY.
+
+When to spawn subagents (do this by default for most searches):
+- Spawn 2–4 Explore agents, each searching for different document types or aspects.
+- Each agent can use Grep, Read, and Glob independently.
+- Launch multiple agents simultaneously for maximum parallelism.
+
+Example — cross_context_synthesis:
+  Task(subagent_type="Explore", prompt="Search the legal casebook corpus for
+  COURT_OPINION documents related to employment law discrimination claims. Use
+  Grep for 'TYPE: COURT_OPINION' near 'discrimination'. Report case names, dates,
+  and key holdings with file names and line numbers.")
+
+  Task(subagent_type="Explore", prompt="Search the legal casebook corpus for
+  LAW_REVIEW_ARTICLE or PRACTICE_GUIDE documents analyzing employment discrimination.
+  Use Grep for 'TYPE: LAW_REVIEW_ARTICLE' and 'TYPE: PRACTICE_GUIDE'. Report
+  titles and key arguments with file names and line numbers.")
+
+Example — source_prioritization:
+  Task(subagent_type="Explore", prompt="Find COURT_OPINION documents from the
+  US Supreme Court ('COURT: Supreme Court') on contract law. Report case names,
+  dates, and holdings with line numbers.")
+
+  Task(subagent_type="Explore", prompt="Find COURT_OPINION documents from circuit
+  courts on the same contract law topics. Also find REGULATORY_GUIDANCE documents
+  on contract-related regulations. Report with line numbers.")
+
+The subagents extend your effective context window — a single model can only read so
+much, but 3–4 parallel subagents can collectively survey the entire corpus. Always
+prefer spawning subagents over sequential Grep/Read when the corpus is large.
+
+EVIDENCE QUALITY — CRITICAL:
+
+Your evidence_snippets MUST be verbatim excerpts of COMPLETE SENTENCES from the corpus.
+
+GOOD evidence (full sentences, ≥50 characters):
+  "The court held that the Clean Air Act preempts state common-law claims seeking abatement of carbon-dioxide emissions."
+  "Under § 7.03[2][a], specific performance is available only when the subject matter of the contract is unique."
+  "Plaintiff argues that the defendant's termination of the employment contract violated the implied covenant of good faith and fair dealing."
+
+BAD evidence (single words, fragments — these will be REJECTED):
+  "the court"
+  "contract"
+  "1983"
+  "damages"
+
+Each evidence snippet must be:
+- A verbatim copy-paste from the corpus (no paraphrasing whatsoever)
+- At least 50 characters long
+- A complete sentence or meaningful clause
+- Directly supporting the answer
+- From a document in the legal casebook corpus
+
+PROCESS:
+
+Phase 1 — Explore the Source:
+1. Use Grep to search the corpus for content relevant to the "{{CATEGORY_NAME}}" capability.
+2. Use Read to gather sufficient surrounding context (read enough lines to fully
+   understand each document — headers, metadata, and body).
+3. Identify {{N_PAIRS}} distinct, well-separated examples from different parts of the corpus.
+4. CRITICAL: For maximum evaluation value, try to find examples that span multiple
+   document types. A question that requires reading a court opinion AND a related brief
+   or statute is more valuable than one confined to a single document.
+
+Phase 2 — Construct Evaluation Prompts and Golden Responses:
+For each example, craft:
+
+- QUESTION (the evaluation prompt): A detailed question that requires genuine capability
+  in "{{CATEGORY_NAME}}" to answer correctly. The question must be answerable solely from
+  the corpus and must be non-trivial. Must end with a question mark.
+  Be specific about what information to provide (e.g., case names, holdings, statutory
+  references, party names, dates, document types).
+
+  FORMATTING: Structure the question for readability using newlines (\n). When a question
+  has multiple sub-parts, number them and place each on its own line. Use this pattern:
+
+  "Given [context],\n\n(1) [first sub-question],\n(2) [second sub-question], and\n(3) [third sub-question]?\n\nCite specific [evidence type] for each point."
+
+  Do NOT write questions as a single unbroken paragraph. Break them into logical parts.
+
+- GOLDEN_ANSWER (the ideal response): A comprehensive, structured answer that a
+  top-performing LLM should produce. This is the ground-truth answer against which LLM
+  responses will be scored — it must be thorough and precise.
+
+  FORMATTING: Use newlines (\n) and markdown-style structure for readability:
+  * Use **bold** for key names, dates, and section headers
+  * Use numbered sections (1., 2., 3.) for distinct points
+  * Separate major sections with blank lines (\n\n)
+  * Use > blockquotes for verbatim quotes from the source
+
+  Include:
+  * All relevant case names, citations, courts, and years
+  * Precise legal holdings using language from the source
+  * Document type and source identification (opinion, brief, statute, etc.)
+  * Clear structure with labeled sections
+  * All relevant facts, names, dates, and identifiers
+
+- DIFFICULTY: "easy", "medium", or "hard" based on how many documents must be found,
+  how many document types are involved, how subtle the reasoning is, and how much
+  legal domain knowledge is required.
+
+- ENTITIES: An array of the key entities found, each with:
+  * label: a short identifier (e.g., "Smith v. Jones — 9th Circuit Holding on Preemption")
+  * description: what this entity is, using source language
+  * evidence_snippet: verbatim excerpt (≥50 chars) supporting this entity
+  * evidence_location: file and line range where this entity's evidence was found
+
+- DISAMBIGUATION_STATEMENT: A clear explanation of how the entities or passages relate,
+  differ, or connect — appropriate to the category being tested.
+
+- SOURCE_FILES: filename(s) where evidence was found.
+
+QUALITY RULES:
+- Each question must be distinct — do not repeat the same case, entity, or concept.
+- The golden answer must be fully supported by the corpus (no hallucination).
+  Every claim must trace back to a verbatim evidence snippet.
+- All content must come from documents in the legal casebook corpus.
+- Evidence snippets must include enough context to verify the claim.
+- PREFER questions that span multiple document types — these create the most
+  challenging and realistic evaluation scenarios.
+
+OUTPUT FORMAT:
+Respond with ONLY a valid JSON array. No preamble, no explanation, no markdown code fences.
+
+[
+  {
+    "question": "<detailed evaluation prompt ending with ?>",
+    "golden_answer": "<comprehensive ideal response>",
+    "difficulty": "<easy|medium|hard>",
+    "entities": [
+      {
+        "label": "<short entity identifier>",
+        "description": "<what this entity is, from the source>",
+        "evidence_snippet": "<verbatim sentence from corpus, ≥50 chars>",
+        "evidence_location": {"file": "<filename>", "start_line": 100, "end_line": 150}
+      }
+    ],
+    "disambiguation_statement": "<how the entities/passages relate or differ>",
+    "source_files": ["<filename>"],
+    "evidence_snippets": ["<verbatim sentence ≥50 chars>", "<another verbatim sentence>"],
+    "evidence_locations": [
+      {"file": "<filename>", "start_line": 100, "end_line": 150},
+      {"file": "<filename>", "start_line": 2000, "end_line": 2050}
+    ]
+  }
+]
