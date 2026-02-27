@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 # Common US statute patterns
 STATUTE_PATTERNS = [
-    # US Code: "26 USC § 1031", "42 U.S.C. § 1983"
-    r"\d+\s+U\.?S\.?C\.?\s*§?\s*\d+[a-zA-Z]*(?:\([a-z0-9]+\))*",
+    # US Code: "26 USC § 1031", "42 U.S.C. § 1983", "42 U. S. C. § 1983"
+    r"\d+\s+U\.?\s*S\.?\s*C\.?\s*§?\s*\d+[a-zA-Z]*(?:\([a-z0-9]+\))*",
     # Named statutes with section numbers
     r"(?:Clean Air Act|Clean Water Act|CERCLA|NEPA|Title VII|ADA|FMLA|"
     r"Lanham Act|DMCA|Sherman Act|Clayton Act|RICO|ERISA|"
@@ -160,13 +160,20 @@ def extract_parties(case_text: str, case_id: str) -> list[dict]:
                 seen.add(name)
 
     # Search for explicit role mentions
-    text_lower = case_text[:5000].lower()
+    # Common verbs/phrases that should not be captured as party names
+    _PARTY_STOP_WORDS = {"filed", "moved", "argued", "appeals", "contends",
+                         "appealed", "asserts", "claims", "alleged", "denied",
+                         "the", "court", "united", "states"}
     for role, indicators in PARTY_INDICATORS.items():
         for indicator in indicators:
-            pattern = rf"({indicator})\s+([A-Z][A-Za-z.\s&,]+?)(?:\s*[,;(]|\s+(?:filed|moved|argued|appeals|contends))"
-            for match in re.finditer(pattern, case_text[:5000], re.IGNORECASE):
-                name = match.group(2).strip().rstrip(",;")
-                if name and name not in seen and len(name) > 2 and len(name) < 80:
+            pattern = rf"\b{indicator}\s+((?:[A-Z][A-Za-z.&'-]+)(?:\s+(?:of|and|the|for|in)\s+(?:[A-Z][A-Za-z.&'-]+))*(?:\s+[A-Z][A-Za-z.&'-]+)*)(?:\s*[,;(]|\s+(?:filed|moved|argued|appeals|contends))"
+            for match in re.finditer(pattern, case_text[:5000]):
+                name = match.group(1).strip().rstrip(",;")
+                words = name.split()
+                # Reject captures with >6 words or that start with common verbs
+                if (name and name not in seen and len(name) > 2 and len(name) < 80
+                        and len(words) <= 6
+                        and words[0].lower() not in _PARTY_STOP_WORDS):
                     parties.append({
                         "name": name,
                         "type": role,
@@ -245,6 +252,9 @@ def extract_statutes(case_text: str, case_id: str) -> list[dict]:
     return statutes
 
 
+MAGNITUDE_MAP = {"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000}
+
+
 def extract_numerical_facts(case_text: str, case_id: str) -> list[dict]:
     """Extract numerical facts (damages, thresholds, vote counts) from case text."""
     facts = []
@@ -257,6 +267,11 @@ def extract_numerical_facts(case_text: str, case_id: str) -> list[dict]:
             if num_match:
                 try:
                     value = float(num_match.group(1).replace(",", ""))
+                    # Apply magnitude multiplier (e.g. "$4 million" → 4_000_000)
+                    for word, multiplier in MAGNITUDE_MAP.items():
+                        if word in value_str.lower():
+                            value *= multiplier
+                            break
                 except ValueError:
                     value = None
             else:

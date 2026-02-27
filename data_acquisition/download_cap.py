@@ -537,11 +537,13 @@ def main():
 
     # Resume support
     existing_ids: set[str] = set()
+    existing_cases: list[dict] = []
     index_path = os.path.join(args.output_dir, "metadata", "case_index.json")
     if args.resume and os.path.exists(index_path):
         with open(index_path) as f:
             existing_index = json.load(f)
         existing_ids = {c["case_id"] for c in existing_index.get("cases", [])}
+        existing_cases = existing_index.get("cases", [])
         logger.info(f"Resuming: {len(existing_ids)} cases already downloaded")
 
     all_cases: list[dict] = []
@@ -586,6 +588,10 @@ def main():
         if not existing_ids:
             sys.exit(1)
         logger.info("Using previously downloaded cases only.")
+
+    # Merge previously downloaded cases when resuming
+    if existing_cases:
+        all_cases = existing_cases + all_cases
 
     # Sort by date
     all_cases.sort(key=lambda c: c.get("date", ""))

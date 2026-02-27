@@ -478,9 +478,10 @@ def build_litigation_prompt(
         f"- {h.get('holding', '')}" for h in entities.get("holdings", [])
     )
 
-    # Truncate case text for the prompt (keep under API limits)
-    truncated_text = case_text[:6000]
-    if len(case_text) > 6000:
+    # Truncate case text — shorter window forces the model to paraphrase
+    # rather than copy verbatim from the source opinion
+    truncated_text = case_text[:3000]
+    if len(case_text) > 3000:
         truncated_text += "\n[... opinion truncated ...]"
 
     return _render(
@@ -532,7 +533,8 @@ async def generate_layer_a(
 
         # Generate 2-3 document types per case (randomly selected)
         rng = random.Random(case_id)
-        doc_types = rng.sample(LAYER_A_TYPES, min(3, len(LAYER_A_TYPES)))
+        num_types = rng.randint(2, min(3, len(LAYER_A_TYPES)))
+        doc_types = rng.sample(LAYER_A_TYPES, num_types)
 
         for doc_type in doc_types:
             doc_id = f"layerA_{case_id}_{doc_type}"
@@ -629,7 +631,8 @@ async def generate_layer_b(
 
         # Generate 2-3 document types per statute
         rng = random.Random(statute_code)
-        doc_types = rng.sample(LAYER_B_TYPES, min(3, len(LAYER_B_TYPES)))
+        num_types = rng.randint(2, min(3, len(LAYER_B_TYPES)))
+        doc_types = rng.sample(LAYER_B_TYPES, num_types)
 
         for doc_type in doc_types:
             doc_id = f"layerB_{re.sub(r'[^a-zA-Z0-9]', '_', statute_code)}_{doc_type}"
@@ -833,6 +836,15 @@ async def run_pipeline(args):
 
     logger.info(f"Loaded {case_index['total_cases']} cases, "
                 f"{graph['summary']['total_citation_edges']} citation edges")
+
+    # Quality gate: warn when entity graph is sparse
+    summary = graph.get("summary", {})
+    if summary.get("total_citation_edges", 0) == 0:
+        logger.warning("Entity graph has 0 citation edges — related case context will be empty.")
+    if summary.get("total_judges", 0) == 0:
+        logger.warning("Entity graph has 0 judges — judge context will be empty.")
+    if summary.get("total_holdings", 0) == 0:
+        logger.warning("Entity graph has 0 holdings — holding context will be empty.")
 
     # Load case texts (needed for Layer A)
     case_texts: dict[str, str] = {}

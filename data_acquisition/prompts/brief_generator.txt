@@ -29,7 +29,7 @@ NUMERICAL FACTS FROM THE CASE:
 KEY HOLDINGS:
 {{HOLDINGS}}
 
-RELEVANT PORTIONS OF THE COURT OPINION:
+SUMMARY OF THE COURT OPINION (for reference only — do NOT copy from this):
 {{CASE_TEXT}}
 
 ---
@@ -97,14 +97,25 @@ Generate a realistic {{DOC_TYPE}} document. Follow these rules strictly:
    and motions, 2,000 words for settlement agreements and court orders. Include
    enough detail to be realistic.
 
-6. ARGUMENTATION: For briefs, present genuine legal arguments that reference the
-   holdings and reasoning from the real court opinion. The plaintiff brief should
-   argue one side, the defendant brief the other. Both should cite overlapping
-   but different sets of cases.
+6. ORIGINALITY — THIS IS CRITICAL: You must write entirely in your own words.
+   Do NOT copy, quote, or closely paraphrase passages from the court opinion
+   provided above. Instead:
+   - Restate facts in the voice of the document's author (attorney or judge)
+   - Describe legal standards using your own formulations, not the opinion's phrasing
+   - Reference holdings by their conclusion, not by reproducing the court's language
+   - For court_order: Write as a judge ruling on a pending motion. Summarize the
+     underlying case facts BRIEFLY (2-3 sentences), then focus on the motion's
+     legal analysis. Do not re-write or restructure the source opinion.
+   - For plaintiff_brief / defendant_brief: Write as an advocate. Present the
+     facts selectively to support your side. Frame legal arguments in the
+     attorney's voice, not the court's. Emphasize different aspects than the
+     opinion does.
+   The court opinion is provided ONLY for factual context — treat it as background
+   research, not as a template to follow.
 
-7. CROSS-REFERENCES: Reference specific paragraphs, pages, or sections of the
-   court opinion where relevant (e.g., "As the court noted in its discussion of
-   the standard of review...").
+7. CROSS-REFERENCES: Reference the court opinion by citation (e.g., "See Stevens,
+   at 5") rather than reproducing its language. Indirect references are preferred
+   (e.g., "As the Court recognized..." followed by your own summary).
 
 8. CONTENT BOUNDARIES: End each document after its final substantive section:
    briefs/motions end at "Conclusion", court orders end at "Order/Disposition",
@@ -128,6 +139,9 @@ unusable:
   - NO certificate of service sections
   - NO fake attorney names, addresses, phone numbers, fax numbers, or email addresses
   - NO "SO ORDERED" followed by a judge signature line
+  - NO verbatim copying from the court opinion. Every sentence must be original.
+    Restate facts and legal standards in your own words. If you catch yourself
+    reproducing a passage from the opinion, stop and rephrase it completely.
 
 End the document IMMEDIATELY after the last paragraph of substantive legal analysis.
 Do not add any closing formalities, signature blocks, or administrative sections.

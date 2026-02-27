@@ -223,15 +223,18 @@ def interleave_by_topic(documents: list[dict], seed: int = 42) -> list[dict]:
 
     result = []
     topic_iterators = {t: iter(topic_groups[t]) for t in topics}
-    active_topics = set(topics)
+    active_topics = list(topics)
 
     while active_topics:
-        for topic in list(active_topics):
+        remaining = []
+        for topic in active_topics:
             try:
                 doc = next(topic_iterators[topic])
                 result.append(doc)
+                remaining.append(topic)
             except StopIteration:
-                active_topics.discard(topic)
+                pass
+        active_topics = remaining
 
     return result
 
@@ -301,7 +304,7 @@ def assemble_final_corpus(documents: list[dict], output_path: str) -> dict:
         os.remove(output_path)
     os.rename(tmp_path, output_path)
 
-    total_tokens = _estimate_tokens("x" * total_chars)
+    total_tokens = int(total_chars / CHARS_PER_TOKEN)
 
     stats = {
         "total_documents": total,

@@ -161,14 +161,16 @@ def check_layer_bc(
     ngram_size: int,
     threshold: float,
     layer_label: str,
+    case_ngrams: dict[str, set[tuple[str, ...]]] | None = None,
 ) -> list[dict]:
     """Check Layer B/C docs against all cases, report max overlap."""
-    # Pre-compute all case n-grams
-    logger.info(f"Pre-computing n-grams for {len(case_texts)} cases...")
-    case_ngrams = {
-        cid: extract_ngrams(text, ngram_size)
-        for cid, text in tqdm(case_texts.items(), desc="Case n-grams")
-    }
+    # Pre-compute all case n-grams (skip if already provided)
+    if case_ngrams is None:
+        logger.info(f"Pre-computing n-grams for {len(case_texts)} cases...")
+        case_ngrams = {
+            cid: extract_ngrams(text, ngram_size)
+            for cid, text in tqdm(case_texts.items(), desc="Case n-grams")
+        }
 
     results = []
     for doc in tqdm(docs, desc=f"Layer {layer_label} overlap"):
@@ -230,7 +232,9 @@ def build_report(
         overlaps = []
         flagged = 0
         for r in results:
-            pct = r.get("overlap_pct") or r.get("max_overlap_pct")
+            pct = r.get("overlap_pct")
+            if pct is None:
+                pct = r.get("max_overlap_pct")
             if pct is not None:
                 overlaps.append(pct)
             if r.get("flagged"):
@@ -252,7 +256,9 @@ def build_report(
     type_overlaps: dict[str, list[float]] = defaultdict(list)
     for results in layer_results.values():
         for r in results:
-            pct = r.get("overlap_pct") or r.get("max_overlap_pct")
+            pct = r.get("overlap_pct")
+            if pct is None:
+                pct = r.get("max_overlap_pct")
             if pct is not None:
                 type_overlaps[r["doc_type"]].append(pct)
 
@@ -378,6 +384,15 @@ def main():
     # Run overlap checks
     layer_results: dict[str, list[dict]] = {}
 
+    # Pre-compute case n-grams once if needed for Layer B and/or C
+    case_ngrams = None
+    if "B" in synthetic or "C" in synthetic:
+        logger.info(f"Pre-computing n-grams for {len(case_texts)} cases...")
+        case_ngrams = {
+            cid: extract_ngrams(text, args.ngram_size)
+            for cid, text in tqdm(case_texts.items(), desc="Case n-grams")
+        }
+
     if "A" in synthetic:
         logger.info("Checking Layer A overlap...")
         layer_results["A"] = check_layer_a(
@@ -388,12 +403,14 @@ def main():
         logger.info("Checking Layer B overlap...")
         layer_results["B"] = check_layer_bc(
             synthetic["B"], case_texts, args.ngram_size, args.threshold, "B",
+            case_ngrams=case_ngrams,
         )
 
     if "C" in synthetic:
         logger.info("Checking Layer C overlap...")
         layer_results["C"] = check_layer_bc(
             synthetic["C"], case_texts, args.ngram_size, args.threshold, "C",
+            case_ngrams=case_ngrams,
         )
 
     # Build and print report
